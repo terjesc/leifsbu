@@ -5,11 +5,16 @@ extern crate mcprogedit;
 
 mod areas;
 mod features;
+mod pathfinding;
+mod types;
 mod walled_town;
 
 use std::path::Path;
 
 use mcprogedit::block::Block;
+use mcprogedit::coordinates::BlockColumnCoord;
+use mcprogedit::material::Material;
+use mcprogedit::positioning::Axis3;
 use mcprogedit::world_excerpt::WorldExcerpt;
 
 use crate::areas::*;
@@ -18,6 +23,7 @@ use crate::walled_town::*;
 
 fn main() {
     // Read arguments
+    // **************
     let matches = matches();
     let input_directory = matches.value_of("input_save").unwrap_or(".");
     let output_directory = matches.value_of("output_save").unwrap_or(input_directory);
@@ -31,7 +37,9 @@ fn main() {
         .unwrap_or(255 - y);
     let z_len = matches.value_of("dz").map(parse_i64_or_exit).unwrap();
 
-    // Import the given area from the given save file directory
+
+    // World import
+    // ************
     println!("Importing from {:?}", input_directory);
     let mut excerpt = WorldExcerpt::from_save(
         (x, y, z).into(),
@@ -40,43 +48,138 @@ fn main() {
     );
     println!("Imported world excerpt of dimensions {:?}", excerpt.dim());
 
+
+    // Initial information extraction
+    // ******************************
+    let _player_location: BlockColumnCoord = (x_len / 2, y_len / 2).into();
+
     // Extract features
     let features = Features::new_from_world_excerpt(&excerpt);
 
     // Find areas suitable for various purposes (based on features)
     let areas = Areas::new_from_features(&features);
 
+
+    // Decide on area usage
+    // ********************
+    // Some thoughts:
+    // - Fields on fertile, reasonably flat, open land
+    // - Wind mills on hills within or by fertile land
+    // - Fields closer to wind mills are predominantly wheat fields
+    // - Livestock on fertile, flat to half-steep, open to semi-open land
+    // - Forestry on forested land
+    // - Mining on exposed rock, either surface (quarry) or hillside (mining tunnel)
+    // - Fishing on shorelines with access to sea
+    // - Infrastructure: Maybe connect "traversable" areas through bridges, tunnels, etc?
+    // - Town is complicated. Can to some extent displace fields/livestock
+
+    // Find town location
     let town_circumference = walled_town_contour(&features, &areas);
 
-    for (x, z) in town_circumference {
-        // TODO place pillar
-        let ground = features.terrain_height_map.height_at((x, z)).unwrap() as i64;
+    for (x, z) in &town_circumference {
+        // Place pillars (TODO: Make wall instead.)
+        let ground = features.terrain_height_map.height_at((*x, *z)).unwrap_or(0) as i64;
         for y in ground..ground + 3 {
-            excerpt.set_block_at((x as i64, y, z as i64).into(), Block::Cobblestone);
+            excerpt.set_block_at((*x as i64, y, *z as i64).into(), Block::Cobblestone);
         }
-        excerpt.set_block_at((x as i64, ground + 4, z as i64).into(), Block::torch());
+        excerpt.set_block_at((*x as i64, ground + 3, *z as i64).into(), Block::torch());
     }
 
-    // TODO Generate area plan (based on areas found above)
-    // - start by putting down primary sector areas
-    // - put down some housing close to primary sector areas
-    // - put down some secondary sector areas:
-    //      * in proximity to primary sector areas
-    //      * in proximity to sea or land routes
-    // - put down more housing in proximity to secondary sector areas
-    // - put down tertiary sector areas among densest housing areas
-    //
-    // - put down major roads connecting to the "centers" or "edges" of the areas
-    //      * maybe defer tertiary to now? Put where traffic is highest...
+    // Create some paths...
+    let start = (x_len as usize / 2, z_len as usize / 2);
+    let mut path_image = features.coloured_map.clone();
 
-    // TODO Generate city plan (based on area plan)
-    // - minor roads
-    // - individual plots / buildings
+    for goal in &town_circumference {
+        if let Some(path) = pathfinding::path(start, *goal, &features.terrain) {
+            //println!("Succeeded finding a path!");
+            add_snake_to_image(&path, &mut path_image);
+            //save_snake_image(&path, &features.coloured_map, &"path_001.png".to_string());
+            for (x, z) in &path {
+                // Place path
+                let ground = features.terrain_height_map.height_at((*x, *z)).unwrap_or(0) as i64;
+                excerpt.set_block_at((*x as i64, ground-1, *z as i64).into(), Block::CoarseDirt);
+                excerpt.set_block_at((*x as i64, ground, *z as i64).into(), Block::Air);
+                excerpt.set_block_at((*x as i64, ground+1, *z as i64).into(), Block::Air);
+            }
+        }
+    }
+    path_image.save("path_001.png").unwrap();
 
-    // TODO Generate structures (based on city plan)
-    // (NOTE: This step modifies the excerpt.)
+    // Create a road path...
+    let start = (x_len * 1 / 10, z_len * 3 / 10);
+    let image::Luma([start_y]) = features.terrain[(start.0 as u32, start.1 as u32)];
+    let start = (start.0, start_y as i64, start.1).into();
 
-    // Export the modified world excerpt to the given save file directory
+    let goal = (x_len * 9 / 10, z_len * 7 / 10);
+    let image::Luma([goal_y]) = features.terrain[(goal.0 as u32, goal.1 as u32)];
+    let goal = (goal.0, goal_y as i64, goal.1).into();
+
+    let mut road_path_image = features.coloured_map.clone();
+    if let Some(path) = pathfinding::road_path(
+        start,
+        goal,
+        &features.terrain,
+        &imageproc::morphology::dilate(
+            &features.water,
+            imageproc::distance_transform::Norm::L1,
+            2,
+        ),
+    ) {
+        // Draw road on map
+        pathfinding::draw_road_path(&mut road_path_image, &path);
+
+        // Build road in world
+        for pathfinding::RoadNode { coordinates, kind, .. } in path {
+            let (x, y, z) = (coordinates.0, coordinates.1, coordinates.2);
+
+            // Space above the nodes
+            excerpt.set_block_at((x, y, z).into(), Block::Air);
+            excerpt.set_block_at((x, y+1, z).into(), Block::Air);
+            excerpt.set_block_at((x, y+2, z).into(), Block::Air);
+
+            // Path and support at node
+            match kind {
+                pathfinding::RoadNodeKind::Ground => {
+                    excerpt.set_block_at(
+                        (x, y-1, z).into(),
+                        Block::double_slab(Material::SmoothStone)
+                    );
+                }
+                pathfinding::RoadNodeKind::WoodenSupport => {
+                    let ground = features.terrain_height_map.height_at((x as usize, z as usize))
+                            .unwrap_or(0) as i64;
+                    for y in ground..y {
+                        excerpt.set_block_at((x, y, z).into(), Block::oak_log(Axis3::Y));
+                    }
+                }
+                pathfinding::RoadNodeKind::StoneSupport => {
+                    let ground = features.terrain_height_map.height_at((x as usize, z as usize))
+                            .unwrap_or(0) as i64;
+                    for y in ground..y {
+                        excerpt.set_block_at((x, y, z).into(), Block::StoneBricks);
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
+    road_path_image.save("road_path_001.png").unwrap();
+
+    // TODO
+    // - Find primary sector areas (agriculture, fishing, forestry, mining)
+    // - Find suitable town circumference (may depend on primary sector areas)
+    // - Put major roads from primary sectors to town circumference
+    // - Extend and connect major roads inside town
+    // - Fill out with minor roads inside town
+    // - Fill out with plots inside town
+    // - If player location is inside town, not on road, then make square plot there
+    // - If player location is outside town, make road from there to nearest major road,
+    //   and put signs towards town. Bridges, boat trips, etc. may be needed...
+    // - Build structures on plots
+
+
+    // World export
+    // ************
     println!("Exporting to {:?}", output_directory);
     excerpt.to_save((x, y, z).into(), Path::new(output_directory));
     println!("Exported world excerpt of dimensions {:?}", excerpt.dim());

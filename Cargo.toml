@@ -12,3 +12,6 @@ clap = "2.33.2"
 image = "0.23.14"
 imageproc = "0.22.0"
 mcprogedit = { path = "../mcprogedit" }
+num-integer = "0.1"
+pathfinding = "2.1.4"
+

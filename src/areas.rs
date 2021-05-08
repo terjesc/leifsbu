@@ -3,8 +3,7 @@ use crate::features::Features;
 use image::GrayImage;
 use image::imageops::*;
 use imageproc::*;
-use imageproc::contrast::threshold_mut;
-use imageproc::distance_transform::{distance_transform_mut, Norm};
+use imageproc::distance_transform::Norm;
 
 const TOWN_FLATNESS_TRESHOLD: u8 = 56;
 const TOWN_DISTANCE_INTO_WATER: u8 = 2;
@@ -13,7 +12,7 @@ const WOOD_CONNECTEDNESS_TRESHOLD: u8 = 5;
 pub struct Areas {
     pub town: GrayImage,
     pub woodcutters: GrayImage,
-    pub agriculture: GrayImage,
+    pub _agriculture: GrayImage,
     //pub harbour: GrayImage,
     //pub mines: GrayImage,
     //pub fishers: GrayImage,
@@ -27,12 +26,12 @@ impl Areas {
     pub fn new_from_features(features: &Features) -> Self {
         let town = Self::town(features);
         let woodcutters = Self::woodcutters(features);
-        let agriculture = Self::agriculture(features);
+        let _agriculture = Self::agriculture(features);
 
         Self {
             town,
             woodcutters,
-            agriculture,
+            _agriculture,
         }
     }
 
@@ -99,7 +98,7 @@ impl Areas {
         // * not too steep
 
         let (x_len, z_len) = features.dimensions();
-        let mut agriculture = image::ImageBuffer::new(x_len as u32, z_len as u32);
+        let agriculture = image::ImageBuffer::new(x_len as u32, z_len as u32);
         agriculture.save("A-03 agriculture.png").unwrap();
 
         agriculture

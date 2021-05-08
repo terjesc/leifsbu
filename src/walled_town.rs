@@ -1,16 +1,18 @@
 use std::cmp::{min, max};
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::TAU;
 
 use image::{GrayImage, RgbImage};
 use image::imageops::colorops::invert;
 use imageproc::contrast::*;
 use imageproc::distance_transform::*;
+use imageproc::drawing::draw_line_segment_mut;
 use imageproc::map::map_colors;
 use imageproc::morphology::*;
 use imageproc::suppress::suppress_non_maximum;
 
 use crate::Features;
 use crate::Areas;
+use crate::types::*;
 
 /// Find the most suitable closed loop perimeter for a town wall.
 pub fn walled_town_contour(features: &Features, areas: &Areas) -> Snake {
@@ -117,24 +119,22 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> Snake {
         &features.coloured_map,
         town_center_list[TOWN_INDEX].radius,
         town_center_list[TOWN_INDEX].point,
+        (x_len as usize, z_len as usize),
     )
 }
-
-// types for active contour model
-pub type Point = (usize, usize);
-pub type Snake = Vec<Point>;
 
 fn circle_snake(
     num_points: usize,
     start_radius: usize,
-    center: Point
+    center: Point,
+    max: Point,
 ) -> Snake {
     let mut snake: Snake = Vec::new();
     for i in 0..num_points {
         let angle = i as f32 * TAU / num_points as f32;
         let x = (center.0 as f32 + start_radius as f32 * angle.cos()) as usize;
         let y = (center.1 as f32 + start_radius as f32 * angle.sin()) as usize;
-        snake.push((x, y));
+        snake.push((min(x, max.0), min(y, max.1)));
     }
     snake
 }
@@ -145,10 +145,8 @@ fn walled_town_contour_internal(
     map_img: &RgbImage,
     radius: u8,
     center: Point,
+    max: Point,
 ) -> Snake {
-    // Parameters for the starting circle snake
-    const _NUM_POINTS: usize = 50;
-
     // Parameters for the active contour model
     const ALPHA: f32 = 0.60; // weight for averaging snake line lengths
     const BETA: f32 = 0.40; // weight for snake curvature
@@ -157,136 +155,59 @@ fn walled_town_contour_internal(
 
     let (center_x, center_y) = center;
     let num_points = radius as usize * 2;
-    let snake = circle_snake(num_points, radius as usize, (center_x, center_y));
-    save_snake_image(&snake, &map_img, "acm_000.png".to_string());
+    let mut snake = circle_snake(
+        num_points,
+        radius as usize,
+        (center_x, center_y),
+        max,
+    );
+    save_snake_image(&snake, &map_img, &"acm_000.png".to_string());
 
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_001.png".to_string());
+    for iteration in 1..=100 {
+        let (s, _energy) = active_contour_model(
+            snake.clone(), &costs, ALPHA, BETA, GAMMA, INFLATE
+        );
 
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_010.png".to_string());
+        if iteration == 1 {
+            save_snake_image(&snake, &map_img, &"acm_001.png".to_string());
+        } else if iteration % 10 == 0 {
+            let file_name = format!("acm_{:0>3}.png", iteration.to_string());
+            save_snake_image(&snake, &map_img, &file_name);
+            println!("Saved {}", file_name);
+        }
 
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_020.png".to_string());
-
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_030.png".to_string());
-
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_040.png".to_string());
-
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_050.png".to_string());
-
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_060.png".to_string());
-
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_070.png".to_string());
-
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_080.png".to_string());
-
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_090.png".to_string());
-
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    let (snake, _energy) = active_contour_model(snake, &costs, ALPHA, BETA, GAMMA, INFLATE);
-    save_snake_image(&snake, &map_img, "acm_100.png".to_string());
+        snake = s;
+    }
 
     snake
 }
 
+pub fn add_snake_to_image(snake: &Snake, image: &mut RgbImage) {
+    const MARKER_RADIUS: usize = 0;
+    let (x_len, z_len) = image.dimensions();
+
+    // TODO optional line drawing
+    snake[1..].iter().fold(snake[0], |a, b| {
+        draw_line_segment_mut(
+            image,
+            (a.0 as f32, a.1 as f32),
+            (b.0 as f32, b.1 as f32),
+            image::Rgb([127u8, 127u8, 0u8]),
+        );
+        *b
+    });
+
+    for (x, z) in snake {
+        for x in max(0, x-MARKER_RADIUS)..=min(x+MARKER_RADIUS, x_len as usize - 1) {
+            for z in max(0, z-MARKER_RADIUS)..=min(z+MARKER_RADIUS, z_len as usize - 1) {
+                image.put_pixel(x as u32, z as u32, image::Rgb([255u8, 127u8, 127u8]));
+            }
+        }
+    }
+}
+
 // Print a snake superimposed on an image
-fn save_snake_image(snake: &Snake, image: &RgbImage, path: String) {
+pub fn save_snake_image(snake: &Snake, image: &RgbImage, path: &String) {
     const MARKER_RADIUS: usize = 0;
     let (x_len, z_len) = image.dimensions();
 
