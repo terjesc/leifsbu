@@ -117,6 +117,26 @@ fn main() {
             excerpt.set_block_at(position - (0, 4, 0).into(), Block::Cobblestone);
             excerpt.set_block_at(position - (0, 5, 0).into(), Block::Cobblestone);
         }
+
+        let line = crate::line::line(
+            &(start.0 as i64, start_ground + 4, start.1 as i64).into(),
+            &(end.0 as i64, end_ground + 4, end.1 as i64).into(),
+            3,
+        );
+
+        for position in line {
+            excerpt.set_block_at(position, Block::Sponge);
+        }
+
+        let line = crate::line::double_line(
+            &(start.0 as i64, start_ground + 5, start.1 as i64).into(),
+            &(end.0 as i64, end_ground + 5, end.1 as i64).into(),
+            3,
+        );
+
+        for position in line {
+            excerpt.set_block_at(position, Block::Cobblestone);
+        }
     }
 
     // Build the walls pt. 2: Node points.

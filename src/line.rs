@@ -9,6 +9,19 @@ use std::cmp::max;
 /// Works by calculating multiple lines in the same direction, at a higher resolution,
 /// then scaling down to block resolution.
 pub fn line(p0: &BlockCoord, p1: &BlockCoord, width: i64) -> Vec<BlockCoord> {
+    line_internal(p0, p1, width, 0)
+}
+
+pub fn double_line(p0: &BlockCoord, p1: &BlockCoord, spacing: i64) -> Vec<BlockCoord> {
+    line_internal(p0, p1, spacing+1, spacing)
+}
+
+fn line_internal(
+    p0: &BlockCoord,
+    p1: &BlockCoord,
+    width: i64,
+    spacing: i64,
+) -> Vec<BlockCoord> {
     // For narrow lines, revert to the simpler function.
     if width <= 1 {
         return narrow_line(p0, p1);
@@ -23,8 +36,10 @@ pub fn line(p0: &BlockCoord, p1: &BlockCoord, width: i64) -> Vec<BlockCoord> {
     const HALF_UNITS: i64 = UNITS / 2;
     const Y_SHIFT: i64 = (UNITS * 2) / 3;
 
-    let scaled_up_p0 = (*p0 * UNITS) + BlockCoord(0, Y_SHIFT, 0);
-    let scaled_up_p1 = (*p1 * UNITS) + BlockCoord(0, Y_SHIFT, 0);
+    // NB There is something strange going on with how things must be shifted
+    // in order to get things "right". It should probably be looked into...
+    let scaled_up_p0 = (*p0 * UNITS) + BlockCoord(HALF_UNITS, Y_SHIFT, HALF_UNITS);
+    let scaled_up_p1 = (*p1 * UNITS) + BlockCoord(HALF_UNITS, Y_SHIFT, HALF_UNITS);
 
     // Get a vector corresponding to the line
     let line_direction = scaled_up_p1 - scaled_up_p0;
@@ -34,10 +49,15 @@ pub fn line(p0: &BlockCoord, p1: &BlockCoord, width: i64) -> Vec<BlockCoord> {
     let length = max(1, (orthogonal.0.pow(2) + orthogonal.2.pow(2)).sqrt());
     let unit = (orthogonal * HALF_UNITS) / length;
 
+    let line_indexes = match spacing {
+        0 => (1-width..=width-1).collect(),
+        n => vec![1-n,n-1],
+    };
+
     // Collect points from multiple parallel lines, half a block apart, within (but
     // not including) width. Since the width is in number of blocks, this means we
     // must go one less than the width to each side from the center line.
-    for i in 1-width..width {
+    for i in line_indexes {
         // Use more probe points along the line, in order to cover all blocks.
         // Currently using double the amount of points by using HALF_UNITS instead of UNITS
         // for the scaling. It may be possible to reduce overlap by increasing the scaling
@@ -62,7 +82,7 @@ fn sparse_line(p0: &BlockCoord, p1: &BlockCoord, step_size: i64) -> Vec<BlockCoo
     let mut points = Vec::with_capacity(n as usize + 1);
 
     for step in 0..=n {
-        points.push(lerp_point(p0, p1, step, n));
+        points.push(lerp_point(&p0, &p1, step, n));
     }
 
     points
