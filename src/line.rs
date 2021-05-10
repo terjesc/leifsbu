@@ -8,14 +8,14 @@ use std::cmp::max;
 ///
 /// Works by calculating multiple lines in the same direction, at a higher resolution,
 /// then scaling down to block resolution.
-pub fn line(p0: &BlockCoord, p1: &BlockCoord, thickness: i64) -> Vec<BlockCoord> {
+pub fn line(p0: &BlockCoord, p1: &BlockCoord, width: i64) -> Vec<BlockCoord> {
     // For narrow lines, revert to the simpler function.
-    if thickness <= 1 {
+    if width <= 1 {
         return narrow_line(p0, p1);
     }
 
     let mut line = Vec::with_capacity(
-        ((diagonal_distance(&p0, p1) + 1) * (thickness + 1)) as usize
+        ((diagonal_distance(&p0, p1) + 1) * (width + 1)) as usize
     );
 
     // Use fixed point with given precision from here on
@@ -34,11 +34,14 @@ pub fn line(p0: &BlockCoord, p1: &BlockCoord, thickness: i64) -> Vec<BlockCoord>
     let length = max(1, (orthogonal.0.pow(2) + orthogonal.2.pow(2)).sqrt());
     let unit = (orthogonal * HALF_UNITS) / length;
 
-    // Get dots on the line using double the resolution of what corresponds to the
-    // real (not scaled up by UNITS) coordinates. For that, go (thickness - 1) steps
-    // to each side. (Double the resolution means 2 times thickness wide in number of
-    // parallel lines to calculate.)
-    for i in 1-thickness..thickness {
+    // Collect points from multiple parallel lines, half a block apart, within (but
+    // not including) width. Since the width is in number of blocks, this means we
+    // must go one less than the width to each side from the center line.
+    for i in 1-width..width {
+        // Use more probe points along the line, in order to cover all blocks.
+        // Currently using double the amount of points by using HALF_UNITS instead of UNITS
+        // for the scaling. It may be possible to reduce overlap by increasing the scaling
+        // factor.
         let scaled_up_lines = sparse_line(
             &(scaled_up_p0 + i * unit),
             &(scaled_up_p1 + i * unit),
