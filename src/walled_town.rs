@@ -212,19 +212,8 @@ pub fn draw_snake(image: &mut RgbImage, snake: &Snake) {
 
 // Print a snake superimposed on an image
 pub fn save_snake_image(snake: &Snake, image: &RgbImage, path: &String) {
-    const MARKER_RADIUS: usize = 0;
-    let (x_len, z_len) = image.dimensions();
-
     let mut image = image.clone();
-
-    for (x, z) in snake {
-        for x in max(0, x-MARKER_RADIUS)..=min(x+MARKER_RADIUS, x_len as usize - 1) {
-            for z in max(0, z-MARKER_RADIUS)..=min(z+MARKER_RADIUS, z_len as usize - 1) {
-                image.put_pixel(x as u32, z as u32, image::Rgb([255u8, 255u8, 255u8]));
-            }
-        }
-    }
-
+    draw_snake(&mut image, &snake);
     image.save(path).unwrap();
 }
 

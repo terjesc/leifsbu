@@ -6,6 +6,7 @@ extern crate mcprogedit;
 mod areas;
 mod features;
 mod line;
+mod partitioning;
 mod pathfinding;
 mod types;
 mod wall;
@@ -21,6 +22,7 @@ use mcprogedit::world_excerpt::WorldExcerpt;
 
 use crate::areas::*;
 use crate::features::*;
+use crate::partitioning::city_block_divide;
 use crate::walled_town::*;
 
 fn main() {
@@ -73,13 +75,13 @@ fn main() {
     // - Mining on exposed rock, either surface (quarry) or hillside (mining tunnel)
     // - Fishing on shorelines with access to sea
     // - Infrastructure: Maybe connect "traversable" areas through bridges, tunnels, etc?
-    // - Town is complicated. Can to some extent displace fields/livestock
+    // - Town is complicated. Can to some extent displace fields/livestock/forest
 
     // Find town location
     let (town_circumference, town_center) = walled_town_contour(&features, &areas);
 
     // Create some paths... (NB Only for generating a cool image. Not built in world.)
-    let start = (x_len as usize / 2, z_len as usize / 2);
+    let start = town_center;
     let mut path_image = features.coloured_map.clone();
 
     for goal in &town_circumference {
@@ -95,6 +97,7 @@ fn main() {
     wall::build_wall(&mut excerpt, &wall_circle, &features);
 
     // Create road paths...
+    // TODO refactor: Move the path generation somewhere else?
     let start_coordinates: Vec<_> = vec![
         (0, 0),
         (0, z_len - 1),
@@ -102,10 +105,9 @@ fn main() {
         (x_len - 1, 0),
     ]
     .iter()
-    .map(|coordinates| {
-        let (x, z) = *coordinates;
-        let image::Luma([y]) = features.terrain[(x as u32, z as u32)];
-        BlockCoord(x, y as i64, z)
+    .map(|(x, z)| {
+        let image::Luma([y]) = features.terrain[(*x as u32, *z as u32)];
+        BlockCoord(*x, y as i64, *z)
     })
     .collect();
 
@@ -115,6 +117,8 @@ fn main() {
     let goal = BlockCoord(town_center.0 as i64, goal_y as i64, town_center.1 as i64);
 
     let mut road_path_image = features.coloured_map.clone();
+
+    let mut roads = Vec::new();
 
     for start in start_coordinates {
         if let Some(path) = pathfinding::road_path(
@@ -130,6 +134,7 @@ fn main() {
             // Draw road on map
             pathfinding::draw_road_path(&mut road_path_image, &path);
 
+            // TODO refactor: Put road building in its own module.
             // Build the nodes
             for pathfinding::RoadNode { coordinates, kind, .. } in &path {
                 let (x, y, z) = (coordinates.0, coordinates.1, coordinates.2);
@@ -165,6 +170,7 @@ fn main() {
                 }
             }
 
+            // TODO refactor: Put road building in its own module.
             // Build the path segments
             for segment in path.windows(2) {
                 let line = line::line(
@@ -180,16 +186,21 @@ fn main() {
                     excerpt.set_block_at(position + (0, 2, 0).into(), Block::Air);
                 }
             }
+
+            // Store road
+            roads.push(path);
         }
     }
 
     road_path_image.save("road_path_001.png").unwrap();
 
+    let _streets = city_block_divide(&town_circumference, &town_center, &roads);
+    // TODO Build the streets!
+
+
     // TODO
     // - Find primary sector areas (agriculture, fishing, forestry, mining)
-    // - Find suitable town circumference (may depend on primary sector areas)
     // - Put major roads from primary sectors to town circumference
-    // - Extend and connect major roads inside town
     // - Fill out with minor roads inside town
     // - Fill out with plots inside town
     // - If player location is inside town, not on road, then make square plot there
