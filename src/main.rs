@@ -84,7 +84,7 @@ fn main() {
 
     for goal in &town_circumference {
         if let Some(path) = pathfinding::path(start, *goal, &features.terrain) {
-            add_snake_to_image(&path, &mut path_image);
+            draw_snake(&mut path_image, &path);
         }
     }
     path_image.save("path_001.png").unwrap();

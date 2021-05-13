@@ -186,7 +186,7 @@ fn walled_town_contour_internal(
     snake
 }
 
-pub fn add_snake_to_image(snake: &Snake, image: &mut RgbImage) {
+pub fn draw_snake(image: &mut RgbImage, snake: &Snake) {
     const MARKER_RADIUS: usize = 0;
     let (x_len, z_len) = image.dimensions();
 
