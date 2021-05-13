@@ -15,7 +15,7 @@ use crate::Areas;
 use crate::types::*;
 
 /// Find the most suitable closed loop perimeter for a town wall.
-pub fn walled_town_contour(features: &Features, areas: &Areas) -> Snake {
+pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, Point) {
     let mut not_town = areas.town.clone();
     invert(&mut not_town);
     not_town.save("T-01 not town.png").unwrap();
@@ -114,12 +114,16 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> Snake {
     // TODO Maybe calculate and rate the N most promising locations?
     //      For now: Use the one the farthest away from "non-suitable" features/areas.
     const TOWN_INDEX: usize = 0; // Nth largest town center: TODO reset to 0
-    walled_town_contour_internal(
-        &energy,
-        &features.coloured_map,
-        town_center_list[TOWN_INDEX].radius,
+
+    (
+        walled_town_contour_internal(
+            &energy,
+            &features.coloured_map,
+            town_center_list[TOWN_INDEX].radius,
+            town_center_list[TOWN_INDEX].point,
+            (x_len as usize, z_len as usize),
+        ),
         town_center_list[TOWN_INDEX].point,
-        (x_len as usize, z_len as usize),
     )
 }
 
