@@ -8,16 +8,14 @@ mod features;
 mod line;
 mod partitioning;
 mod pathfinding;
+mod road;
 mod types;
 mod wall;
 mod walled_town;
 
 use std::path::Path;
 
-use mcprogedit::block::Block;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
-use mcprogedit::material::Material;
-use mcprogedit::positioning::Axis3;
 use mcprogedit::world_excerpt::WorldExcerpt;
 
 use crate::areas::*;
@@ -96,8 +94,13 @@ fn main() {
     wall_circle.push(town_circumference[0]);
     wall::build_wall(&mut excerpt, &wall_circle, &features);
 
+    // TODO
+    // - Find primary sector areas (agriculture, fishing, forestry, mining)
+    // - Put major roads from primary sectors to town circumference
+
     // Create road paths...
     // TODO refactor: Move the path generation somewhere else?
+    // TODO to be replaced by other means of finding road start locations
     let start_coordinates: Vec<_> = vec![
         (0, 0),
         (0, z_len - 1),
@@ -134,58 +137,8 @@ fn main() {
             // Draw road on map
             pathfinding::draw_road_path(&mut road_path_image, &path);
 
-            // TODO refactor: Put road building in its own module.
-            // Build the nodes
-            for pathfinding::RoadNode { coordinates, kind, .. } in &path {
-                let (x, y, z) = (coordinates.0, coordinates.1, coordinates.2);
-
-                // Space above the nodes
-                excerpt.set_block_at((x, y, z).into(), Block::Air);
-                excerpt.set_block_at((x, y+1, z).into(), Block::Air);
-                excerpt.set_block_at((x, y+2, z).into(), Block::Air);
-
-                // Path and support at node
-                match kind {
-                    pathfinding::RoadNodeKind::Ground => {
-                        excerpt.set_block_at(
-                            (x, y-1, z).into(),
-                            Block::double_slab(Material::SmoothStone)
-                        );
-                    }
-                    pathfinding::RoadNodeKind::WoodenSupport => {
-                        let ground = features.terrain_height_map.height_at((x as usize, z as usize))
-                                .unwrap_or(0) as i64;
-                        for y in ground..y {
-                            excerpt.set_block_at((x, y, z).into(), Block::oak_log(Axis3::Y));
-                        }
-                    }
-                    pathfinding::RoadNodeKind::StoneSupport => {
-                        let ground = features.terrain_height_map.height_at((x as usize, z as usize))
-                                .unwrap_or(0) as i64;
-                        for y in ground..y {
-                            excerpt.set_block_at((x, y, z).into(), Block::StoneBricks);
-                        }
-                    }
-                    _ => (),
-                }
-            }
-
-            // TODO refactor: Put road building in its own module.
-            // Build the path segments
-            for segment in path.windows(2) {
-                let line = line::line(
-                    &(segment[0].coordinates),
-                    &(segment[1].coordinates),
-                    3,
-                );
-                for position in line {
-                    excerpt.set_block_at(position - (0, 2, 0).into(), Block::Cobblestone);
-                    excerpt.set_block_at(position - (0, 1, 0).into(), Block::Gravel);
-                    excerpt.set_block_at(position, Block::Air);
-                    excerpt.set_block_at(position + (0, 1, 0).into(), Block::Air);
-                    excerpt.set_block_at(position + (0, 2, 0).into(), Block::Air);
-                }
-            }
+            // Build road in world
+            road::build_road(&mut excerpt, &path, &features.terrain, 3);
 
             // Store road
             roads.push(path);
@@ -194,14 +147,17 @@ fn main() {
 
     road_path_image.save("road_path_001.png").unwrap();
 
-    let _streets = city_block_divide(&town_circumference, &town_center, &roads);
-    // TODO Build the streets!
+    // Fill out with minor roads inside town
+    let streets = city_block_divide(
+        &town_circumference, &town_center, &roads, &features.terrain,
+    );
+    for street in streets {
+        let street_path = pathfinding::road_path_from_snake(&street, &features.terrain);
+        road::build_road(&mut excerpt, &street_path, &features.terrain, 2);
+    }
 
 
     // TODO
-    // - Find primary sector areas (agriculture, fishing, forestry, mining)
-    // - Put major roads from primary sectors to town circumference
-    // - Fill out with minor roads inside town
     // - Fill out with plots inside town
     // - If player location is inside town, not on road, then make square plot there
     // - If player location is outside town, make road from there to nearest major road,

@@ -289,6 +289,18 @@ pub fn road_path(
     }
 }
 
+// TODO handle water, steepness, etc. as well...
+pub fn road_path_from_snake(path: &Snake, height_map: &GrayImage) -> RoadPath {
+    let mut road_path = Vec::with_capacity(path.len());
+
+    for (x, z) in path {
+        let image::Luma([y]) = height_map[(*x as u32, *z as u32)];
+        let coordinates: BlockCoord = (*x as i64, y as i64, *z as i64).into();
+        road_path.push(RoadNode { coordinates, kind: RoadNodeKind::Ground });
+    }
+
+    road_path
+}
 
 // NB deprecated
 pub fn path(start: Point, goal: Point, height_map: &GrayImage) -> Option<Snake> {

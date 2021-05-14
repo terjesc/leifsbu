@@ -1,3 +1,4 @@
+use crate::pathfinding;
 use crate::pathfinding::RoadPath;
 use crate::types::*;
 
@@ -10,7 +11,7 @@ use imageproc::region_labelling::{connected_components, Connectivity};
 use imageproc::stats::histogram;
 use imageproc::template_matching::{Extremes, find_extremes};
 use num_integer::Roots;
-use std::cmp::max;
+use std::cmp::{max, min};
 
 // Plot partitioning…
 // Let's figure out how to do that!
@@ -94,15 +95,20 @@ use std::cmp::max;
 
 /// Given a city area and existing roads, find a set of streets such that all area
 /// within the city area are within reasonable distance from a road or street.
-pub fn city_block_divide(circumference: &Snake, town_center: &Point, roads: &Vec<RoadPath>)
--> Vec<Snake> {
+pub fn city_block_divide(
+    circumference: &Snake,
+    town_center: &Point,
+    roads: &Vec<RoadPath>,
+    height_map: &GrayImage,
+) -> Vec<Snake> {
     const COVERED: Luma<u8> = Luma([255u8]);
 
     const ROAD_COVERAGE_RADIUS: u8 = 10;
-    const ROAD_HALF_WIDTH: u8 = 2;
+    const ROAD_HALF_WIDTH: u8 = 3;
     
-    const STREET_COVERAGE_RADIUS: u8 = 8;
-    const STREET_HALF_WIDTH: u8 = 1;
+    const STREET_COVERAGE_RADIUS: u8 = 7;
+    const STREET_COVERAGE_FULL_WIDTH: u8 = 2 * (STREET_COVERAGE_RADIUS + STREET_HALF_WIDTH);
+    const STREET_HALF_WIDTH: u8 = 2;
 
     const TOWN_BORDER_HALF_WIDTH: u8 = 2;
     const TOWN_BORDER_DISTANCE_TO_CLOSE_STREET: i64 =
@@ -165,9 +171,10 @@ pub fn city_block_divide(circumference: &Snake, town_center: &Point, roads: &Vec
     println!("Found {} distinct existing areas.", full_area_count);
 
     // NB Only for generating nice debug visuals...
-    let areas = stretch_contrast(&initial_areas, 0u8, full_area_count);
-    areas.save("P-05 full areas.png").unwrap();
-
+    if full_area_count > 0 {
+        let areas = stretch_contrast(&initial_areas, 0u8, full_area_count);
+        areas.save("P-05 full areas.png").unwrap();
+    }
 
     // Mark areas close to roads as covered
     let road_coverage = dilate(&infrastructure, Norm::LInf, ROAD_COVERAGE_RADIUS);
@@ -185,8 +192,10 @@ pub fn city_block_divide(circumference: &Snake, town_center: &Point, roads: &Vec
     println!("Found {} distinct areas that may need coverage.", area_count);
 
     // NB Only for generating nice debug visuals...
-    let areas = stretch_contrast(&uncovered_areas, 0u8, area_count);
-    areas.save("P-08 areas.png").unwrap();
+    if area_count > 0 {
+        let areas = stretch_contrast(&uncovered_areas, 0u8, area_count);
+        areas.save("P-08 areas.png").unwrap();
+    }
 
     // Find the size of each area
     let stats = histogram(&uncovered_areas);
@@ -260,6 +269,10 @@ pub fn city_block_divide(circumference: &Snake, town_center: &Point, roads: &Vec
         ));
     }
 
+    // Modify the street options, in order to get reasonable segment lengths
+    let street_close_to_border = resnake(&street_close_to_border, 2f32, 3.5f32);
+    let street_far_from_border = resnake(&street_far_from_border, 2f32, 3.5f32);
+
     // NB Only for making nice debug visuals...
     let mut wall_roads = image::ImageBuffer::new(dimensions.0 as u32, dimensions.1 as u32);
     draw_offset_snake(&mut wall_roads, &street_close_to_border, &offset, COVERED);
@@ -286,15 +299,12 @@ pub fn city_block_divide(circumference: &Snake, town_center: &Point, roads: &Vec
             .unwrap();
         let value = initial_areas[location];
 
-        // NB If dilating too much, with the test world the far path disappears.
-        //    It probably got very short due to winding in and out of the area,
-        //    before doing the proper tour... This may be happening on some maps,
-        //    regardless of dilation setting, and should be further investigated.
-        //    If dilating too little, paths do not properly connect.
+        // Dilate in order to give a bit more tolerance, for paths along the borders
+        // to actually reach the initial roads.
         let full_area_stencil = dilate(
             &stencil_from_value(&initial_areas, value),
             Norm::LInf,
-            2,
+            1,
         );
 
         area_stencil.save(format!("P-10 area {:0>2}.png", area_index)).unwrap();
@@ -302,11 +312,9 @@ pub fn city_block_divide(circumference: &Snake, town_center: &Point, roads: &Vec
 
         //  Find possible path close by wall
         let close_path = sub_snake(&street_close_to_border, &full_area_stencil, &offset);
-        println!("Close path:\n{:?}\n", close_path);
 
         // Find possible path further from wall
         let far_path = sub_snake(&street_far_from_border, &full_area_stencil, &offset);
-        println!("Far path:\n{:?}\n", far_path);
 
         // NB Only for making nice debug visuals...
         let mut wall_roads = image::ImageBuffer::new(dimensions.0 as u32, dimensions.1 as u32);
@@ -336,18 +344,102 @@ pub fn city_block_divide(circumference: &Snake, town_center: &Point, roads: &Vec
             continue;
         }
 
-        // TODO Decide whether the "far" road is the best approach.
-        //      Choosing the "best" fit may be an option.
-        //      Choosing the "close" road also seem a safer option wrt. weird far path shapes.
         // Put in the "far" road alternative, as it most likely covers the most area
-        streets.push(far_path);
+        streets.push(far_path.clone());
         remove_cover(&mut area_stencil, &far_cover);
 
-        // TODO get bounding box for remaining area
-        // TODO see if x or z dimension is the shortest
-        // TODO calculate covering spread across longest dimension
-        // TODO put streets from infrastructure to infrastructure across
-        //      the shortes dimension, at interval of the calculated spread
+        // NB Only for making nice debug visuals...
+        area_stencil.save(format!("P-10 area {:0>2} after wall path.png", area_index)).unwrap();
+
+        // Add border street to infrastructure
+        let mut new_infrastructure = infrastructure.clone();
+        draw_offset_snake(&mut new_infrastructure, &far_path, &offset, COVERED);
+        // Get continuous regions from infrastructure
+        let continuous_regions = image_u32_to_u8(
+            &connected_components(&new_infrastructure, Connectivity::Four, COVERED)
+        );
+        // Find uncovered pixel location from area_stencil
+        let arbitrary_uncovered_location = location_from_value(&area_stencil, Luma([255u8]));
+        // Find colour at that location from the newly made continuous regions
+        let area_colour = continuous_regions[arbitrary_uncovered_location.unwrap()];
+        // Extract that colour, make stencil out of it
+        let new_area_stencil = stencil_from_value(&continuous_regions, area_colour);
+
+        // NB Only for making nice debug visuals...
+        new_area_stencil.save(format!("P-10 new area {:0>2}.png", area_index)).unwrap();
+
+        // Get bounding box for remaining area
+        let (uncovered_offset, uncovered_size) = stencil_bounding_box(&area_stencil);
+
+        fn calculate_offsets (uncovered_length: u32) -> Vec<u32> {
+            fn ceiling_div(dividend: u32, divisor: u32) -> u32 {
+                (dividend + divisor - 1) / divisor
+            }
+
+            let full_distance = STREET_COVERAGE_FULL_WIDTH as u32 + uncovered_length;
+            let interval_count = ceiling_div(full_distance, STREET_COVERAGE_FULL_WIDTH as u32);
+            let interval_length = full_distance / interval_count;
+            let edge_offset = (full_distance - (interval_count * interval_length)) / 2;
+
+            println!(
+                "Found {} intervals of size {}, edges offset by {}, to cover the {} long gap.",
+                interval_count,
+                interval_length,
+                edge_offset,
+                uncovered_length,
+            );
+
+            let mut offsets = Vec::with_capacity((interval_count - 1) as usize);
+            for i in 1..interval_count {
+                let offset = edge_offset + i * interval_length;
+                offsets.push(offset - STREET_COVERAGE_FULL_WIDTH as u32 / 2);
+            }
+            offsets
+        }
+
+        if uncovered_size.0 < uncovered_size.1 {
+            // shortest along x axis
+            println!("Decided to spread along Z axis.");
+            let z_offsets = calculate_offsets(uncovered_size.1);
+            println!("Z offsets: {:?}", z_offsets);
+
+            // Fill with horizontal paths
+            for z in z_offsets {
+                let z = z + uncovered_offset.1;
+                let x0 = first_on_row(&new_area_stencil, z);
+                let x1 = last_on_row(&new_area_stencil, z);
+                if let (Some(x0), Some(x1)) = (x0, x1) {
+                    if let Some(horizontal_path) = pathfinding::path(
+                        (x0 as usize + offset.0, z as usize + offset.1),
+                        (x1 as usize + offset.0, z as usize + offset.1),
+                        height_map,
+                    ) {
+                        streets.push(horizontal_path);
+                    }
+                }
+            }
+        } else {
+            // shortest along z axis
+            println!("Decided to spread along X axis.");
+            let x_offsets = calculate_offsets(uncovered_size.0);
+            println!("X offsets: {:?}", x_offsets);
+
+            // Fill with vertical paths
+            for x in x_offsets {
+                let x = x + uncovered_offset.0;
+                let z0 = first_on_column(&new_area_stencil, x);
+                let z1 = last_on_column(&new_area_stencil, x);
+                if let (Some(z0), Some(z1)) = (z0, z1) {
+                    if let Some(vertical_path) = pathfinding::path(
+                        (x as usize + offset.0, z0 as usize + offset.1),
+                        (x as usize + offset.0, z1 as usize + offset.1),
+                        height_map,
+                    ) {
+                        streets.push(vertical_path);
+                    }
+                }
+            }
+        }
     }
 
     // Some final visual debug
@@ -432,6 +524,42 @@ fn draw_offset_road(
     });
 }
 
+fn first_on_row(image: &GrayImage, row: u32) -> Option<u32> {
+    for x in 0..image.dimensions().0 {
+        if image[(x, row)] == Luma([255u8]){
+            return Some(x);
+        }
+    }
+    None
+}
+
+fn last_on_row(image: &GrayImage, row: u32) -> Option<u32> {
+    for x in (0..image.dimensions().0).rev() {
+        if image[(x, row)] == Luma([255u8]){
+            return Some(x);
+        }
+    }
+    None
+}
+
+fn first_on_column(image: &GrayImage, column: u32) -> Option<u32> {
+    for z in 0..image.dimensions().1 {
+        if image[(column, z)] == Luma([255u8]){
+            return Some(z);
+        }
+    }
+    None
+}
+
+fn last_on_column(image: &GrayImage, column: u32) -> Option<u32> {
+    for z in (0..image.dimensions().1).rev() {
+        if image[(column, z)] == Luma([255u8]){
+            return Some(z);
+        }
+    }
+    None
+}
+
 fn combine_max_mut(a: &mut GrayImage, b: &GrayImage) {
     for (x, z, value) in b.enumerate_pixels() {
         let Luma([a_value]) = a[(x, z)];
@@ -459,6 +587,9 @@ fn image_u32_to_u8(image_u32: &ImageBuffer<Luma<u32>, Vec<u32>>) -> GrayImage {
     image_u8
 }
 
+/// Makes a stencil corresponding to one colour in the input image..
+/// All pixels of the foreground colour gets fully white in the output.
+/// All pixels of other colours gets fully black in the output.
 fn stencil_from_value(image: &GrayImage, foreground: Luma<u8>) -> GrayImage {
     let (x_len, z_len) = image.dimensions();
     let mut output_image = GrayImage::new(x_len, z_len);
@@ -471,6 +602,7 @@ fn stencil_from_value(image: &GrayImage, foreground: Luma<u8>) -> GrayImage {
     output_image
 }
 
+/// Returns one location in the picture that has the given colour, if such a location exist.
 fn location_from_value(image: &GrayImage, foreground: Luma<u8>) -> Option<(u32, u32)> {
     for (x, z, value) in image.enumerate_pixels() {
         if *value == foreground {
@@ -529,4 +661,91 @@ fn remove_cover(under: &mut GrayImage, covering: &GrayImage) {
             under.put_pixel(x, z, Luma([0u8]));
         }
     }
+}
+
+fn stencil_bounding_box(image: &GrayImage) -> ((u32, u32), (u32, u32)) {
+    let mut max_point = (0, 0);
+    let mut min_point = image.dimensions();
+
+    for (x, z, value) in image.enumerate_pixels() {
+        if *value == Luma([255]) {
+            min_point.0 = min(x, min_point.0);
+            min_point.1 = min(z, min_point.1);
+            max_point.0 = max(x, max_point.0);
+            max_point.1 = max(z, max_point.1);
+        }
+    }
+
+    let size = (
+        max_point.0.saturating_sub(min_point.0),
+        max_point.1.saturating_sub(min_point.1),
+    );
+
+    (min_point, size)
+}
+
+fn resnake(snake: &Snake, min_length: f32, max_length: f32) -> Snake {
+    assert!(min_length < max_length);
+
+    if snake.is_empty() {
+        return Vec::new();
+    }
+
+    let mut output = Vec::new();
+    output.push(snake[0]);
+
+    let distances: Vec<f32> = snake
+        .windows(2)
+        .map(|points| {
+            let (a, b) = (points[0], points[1]);
+            ((b.0 as f32 - a.0 as f32).powi(2) + (b.1 as f32 - a.1 as f32).powi(2)).sqrt()
+        })
+        .collect();
+
+    let mut accumulated_distance = 0f32;
+
+    for (index, point) in snake.iter().enumerate() {
+        if index == 0 {
+            continue;
+        }
+
+        if index > distances.len() {
+            unreachable!();
+        }
+
+        let distance_from_previous_point = distances[index - 1];
+        accumulated_distance += distance_from_previous_point;
+
+        if accumulated_distance < min_length {
+            // Too close to the previously added point; do not add
+        } else if accumulated_distance <= max_length {
+            // We are within the length boundaries; add point
+            output.push(*point);
+            accumulated_distance = 0f32;
+        } else {
+            // We have gone too far; add multiple points
+            let num_points = (accumulated_distance / max_length).ceil() as usize;
+            let previous_point = snake[index - 1];
+            let x_diff = point.0 as f32 - previous_point.0 as f32;
+            let z_diff = point.1 as f32 - previous_point.1 as f32;
+            let scaling = accumulated_distance / distance_from_previous_point;
+            let x_unit = x_diff * scaling / num_points as f32;
+            let z_unit = z_diff * scaling / num_points as f32;
+
+            for i in (0..num_points).rev() {
+                let x = point.0 as f32 - (i as f32 * x_unit);
+                let z = point.1 as f32 - (i as f32 * z_unit);
+                output.push((x as usize, z as usize));
+            }
+
+            accumulated_distance = 0f32;
+        }
+    }
+
+    println!(
+        "Generated new snake of length {}, from old snake of length {}.",
+        output.len(),
+        snake.len(),
+    );
+    output
 }
