@@ -1,4 +1,5 @@
 use crate::line;
+use crate::tree;
 use crate::pathfinding::{RoadNode, RoadNodeKind, RoadPath};
 
 use image::GrayImage;
@@ -18,6 +19,9 @@ pub fn build_road(
         let (x, y, z) = (coordinates.0, coordinates.1, coordinates.2);
 
         // Space above the nodes
+        tree::chop(excerpt, (x, y, z).into());
+        tree::chop(excerpt, (x, y + 1, z).into());
+        tree::chop(excerpt, (x, y + 2, z).into());
         excerpt.set_block_at((x, y, z).into(), Block::Air);
         excerpt.set_block_at((x, y+1, z).into(), Block::Air);
         excerpt.set_block_at((x, y+2, z).into(), Block::Air);
@@ -25,6 +29,7 @@ pub fn build_road(
         // Path and support at node
         match kind {
             RoadNodeKind::Ground => {
+                tree::chop(excerpt, (x, y-1, z).into());
                 excerpt.set_block_at(
                     (x, y-1, z).into(),
                     Block::double_slab(Material::SmoothStone)
@@ -33,12 +38,14 @@ pub fn build_road(
             RoadNodeKind::WoodenSupport => {
                 let image::Luma([ground]) = height_map[(x as u32, z as u32)];
                 for y in ground as i64..y {
+                    tree::chop(excerpt, (x, y, z).into());
                     excerpt.set_block_at((x, y, z).into(), Block::oak_log(Axis3::Y));
                 }
             }
             RoadNodeKind::StoneSupport => {
                 let image::Luma([ground]) = height_map[(x as u32, z as u32)];
                 for y in ground as i64..y {
+                    tree::chop(excerpt, (x, y, z).into());
                     excerpt.set_block_at((x, y, z).into(), Block::StoneBricks);
                 }
             }
@@ -54,6 +61,11 @@ pub fn build_road(
             road_width,
         );
         for position in line {
+            tree::chop(excerpt, position - (0, 2, 0).into());
+            tree::chop(excerpt, position - (0, 1, 0).into());
+            tree::chop(excerpt, position);
+            tree::chop(excerpt, position + (0, 1, 0).into());
+            tree::chop(excerpt, position + (0, 2, 0).into());
             excerpt.set_block_at(position - (0, 2, 0).into(), Block::Cobblestone);
             excerpt.set_block_at(position - (0, 1, 0).into(), Block::Gravel);
             excerpt.set_block_at(position, Block::Air);

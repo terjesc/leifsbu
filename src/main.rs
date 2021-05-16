@@ -165,9 +165,11 @@ fn main() {
     //   and put signs towards town. Bridges, boat trips, etc. may be needed...
     // - Build structures on plots
 
+    /*
     println!("Testing rainbow trees!");
     tree::rainbow_trees(&mut excerpt);
     println!("Rainbow trees finished!");
+    */
 
     // World export
     // ************
