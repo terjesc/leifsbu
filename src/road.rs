@@ -1,9 +1,8 @@
 use crate::line;
-use crate::tree;
 use crate::pathfinding::{RoadNode, RoadNodeKind, RoadPath};
+use crate::tree;
 
 use image::GrayImage;
-use mcprogedit::block;
 use mcprogedit::block::Block;
 use mcprogedit::material::Material;
 use mcprogedit::positioning::Axis3;
@@ -72,15 +71,18 @@ pub fn build_road(
     }
 
     // Build the nodes
-    for RoadNode { coordinates, kind, .. } in path {
+    for RoadNode {
+        coordinates, kind, ..
+    } in path
+    {
         let (x, y, z) = (coordinates.0, coordinates.1, coordinates.2);
 
         // Path and support at node
         match kind {
             RoadNodeKind::Ground => {
-                tree::chop(excerpt, (x, y-1, z).into());
+                tree::chop(excerpt, (x, y - 1, z).into());
                 excerpt.set_block_at(
-                    (x, y-1, z).into(),
+                    (x, y - 1, z).into(),
                     //Block::double_slab(Material::SmoothStone),
                     //Block::Andesite,
                     Block::BlockOfGold,
@@ -96,16 +98,16 @@ pub fn build_road(
             RoadNodeKind::StoneSupport => {
                 let image::Luma([ground]) = height_map[(x as u32, z as u32)];
                 for y in ground as i64..y {
-                    let coordinates = (x+1, y, z).into();
+                    let coordinates = (x + 1, y, z).into();
                     tree::chop(excerpt, coordinates);
                     excerpt.set_block_at(coordinates, Block::StoneBricks);
-                    let coordinates = (x-1, y, z).into();
+                    let coordinates = (x - 1, y, z).into();
                     tree::chop(excerpt, coordinates);
                     excerpt.set_block_at(coordinates, Block::StoneBricks);
-                    let coordinates = (x, y, z+1).into();
+                    let coordinates = (x, y, z + 1).into();
                     tree::chop(excerpt, coordinates);
                     excerpt.set_block_at(coordinates, Block::StoneBricks);
-                    let coordinates = (x, y, z-1).into();
+                    let coordinates = (x, y, z - 1).into();
                     tree::chop(excerpt, coordinates);
                     excerpt.set_block_at(coordinates, Block::StoneBricks);
                 }
@@ -113,5 +115,4 @@ pub fn build_road(
             _ => (),
         }
     }
-
 }

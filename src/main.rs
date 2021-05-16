@@ -129,10 +129,12 @@ fn main() {
             start,
             goal,
             &features.terrain,
-            &imageproc::morphology::dilate(
-                &features.water,
-                imageproc::distance_transform::Norm::LInf,
-                2,
+            Some(
+                &imageproc::morphology::dilate(
+                    &features.water,
+                    imageproc::distance_transform::Norm::LInf,
+                    2,
+                )
             ),
         ) {
             // Draw road on map
@@ -153,8 +155,7 @@ fn main() {
         &town_circumference, &town_center, &roads, &features.terrain,
     );
     for street in streets {
-        let street_path = pathfinding::road_path_from_snake(&street, &features.terrain);
-        road::build_road(&mut excerpt, &street_path, &features.terrain, 2);
+        road::build_road(&mut excerpt, &street, &features.terrain, 2);
     }
 
 

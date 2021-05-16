@@ -79,7 +79,7 @@ pub fn road_path(
     start: BlockCoord,
     goal: BlockCoord,
     height_map: &GrayImage,
-    ground_block_map: &GrayImage,
+    ground_block_map: Option<&GrayImage>,
 ) -> Option<RoadPath> {
     let (x_len, z_len) = height_map.dimensions();
 
@@ -124,7 +124,11 @@ pub fn road_path(
     };
 
     let is_ground_blocked = |x: i64, z: i64| -> bool {
-        image::Luma([0u8]) != ground_block_map[(x as u32, z as u32)]
+        if let Some(ground_block_map) = ground_block_map {
+            image::Luma([0u8]) != ground_block_map[(x as u32, z as u32)]
+        } else {
+            false
+        }
     };
 
     // Find all potential neighbours for a given road node
@@ -300,6 +304,16 @@ pub fn road_path_from_snake(path: &Snake, height_map: &GrayImage) -> RoadPath {
     }
 
     road_path
+}
+
+pub fn snake_from_road_path(path: &RoadPath) -> Snake {
+    let mut road_snake = Vec::with_capacity(path.len());
+
+    for RoadNode { coordinates: BlockCoord(x, _, z), .. } in path {
+        road_snake.push((*x as usize, *z as usize));
+    }
+
+    road_snake
 }
 
 // NB deprecated
