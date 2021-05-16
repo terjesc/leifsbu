@@ -213,6 +213,15 @@ fn find_connected_leaves(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<Blo
     leaves_collection
 }
 
+fn neighbours_4(at: &BlockCoord) -> Vec<BlockCoord> {
+    vec![
+        *at - (1, 0, 0).into(),
+        *at - (0, 0, 1).into(),
+        *at + (1, 0, 0).into(),
+        *at + (0, 0, 1).into(),
+    ]
+}
+
 fn neighbours_6(at: &BlockCoord) -> Vec<BlockCoord> {
     vec![
         *at - (1, 0, 0).into(),
@@ -498,9 +507,31 @@ fn find_tree(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<BlockCoord> {
                 }
             }
 
-            // TODO Handle vines!
+            // Handle Vines
+            let mut vines = HashSet::<BlockCoord>::new();
+            for coordinates in &tree_block_collection {
+                for neighbour_coordinates in neighbours_4(&coordinates) {
+                    for y in (0..=neighbour_coordinates.1).rev() {
+                        let block_coordinates = (
+                            neighbour_coordinates.0,
+                            y,
+                            neighbour_coordinates.2
+                        ).into();
+
+                        if tree_block_collection.contains(&block_coordinates) {
+                            break;
+                        }
+
+                        match excerpt.block_at(block_coordinates) {
+                            Some(Block::Vines(_)) => vines.insert(block_coordinates),
+                            _ => break,
+                        };
+                    }
+                }
+            }
+
             // TODO Handle mushrooms growing on trees. (Is that in swamp biomes only?)
-            tree_block_collection
+            tree_block_collection.union(&vines).cloned().collect()
         }
     }
 }
@@ -538,7 +569,8 @@ fn backtrace(
             ..
         }) = through.get(&coordinates)
         {
-            // Do not traverse blocks where foreign distance >= tree distance
+            // If the distance to the foreign tree gets larger than the
+            // distance to "our" tree, then this block belongs to "our" tree.
             if foreign_info.distance >= *tree_distance {
                 continue;
             }
