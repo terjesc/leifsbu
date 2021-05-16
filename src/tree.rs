@@ -12,23 +12,7 @@ use mcprogedit::world_excerpt::WorldExcerpt;
 ///
 /// If the given location holds vines, remove the vines from there down.
 pub fn prune(excerpt: &mut WorldExcerpt, at: BlockCoord) {
-    match excerpt.block_at(at) {
-        Some(Block::Log(_)) | Some(Block::Leaves { .. }) => {
-            // TODO get the database
-            // TODO remove block and all descendants, and prune any connected vines
-        }
-        Some(Block::Vines(_)) => {
-            // Remove all vines going downwards
-            for y in (0..=at.1).rev() {
-                if let Some(Block::Vines(_)) = excerpt.block_at((at.0, y, at.2).into()) {
-                    excerpt.set_block_at((at.0, y, at.2).into(), Block::Air);
-                } else {
-                    break;
-                }
-            }
-        }
-        _ => (),
-    }
+    unimplemented!();
 }
 
 /// If the given location holds part of a tree, remove the whole tree.
@@ -42,103 +26,9 @@ pub fn chop(excerpt: &mut WorldExcerpt, at: BlockCoord) {
     for coordinates in to_chop {
         excerpt.set_block_at(coordinates, Block::Air);
     }
-    /*
-    match excerpt.block_at(at) {
-        Some(Block::Log(_)) | Some(Block::Leaves { .. }) => {
-            // NB Inefficient implementation!
-            //    Recalculates for whole excerpt, each and every time.
-            let database = prepare(excerpt);
-
-            if let Some(TreeBlockInfo { tree_id, .. }) = database.get(&at) {
-                println!("Need to chop down tree #{}!", tree_id);
-                // TODO remove all nearby blocks of that tree_id,
-                //      if they are of that tree's log or leaf type.
-                //      Also remove from cached databas (if any),
-                //      and prune any vines that cannot hang from anything else
-            }
-        }
-        _ => (),
-    }
-    */
 }
 
-struct TreeBlockInfo {
-    tree_id: usize,
-    parent: Option<BlockCoord>,
-}
-
-/// Prepare a database of trees
-///
-/// The range needed around a single block in order to ensure that block's tree
-/// is correctly detected depends on the type of tree. The maximum tree sizes
-/// (for corresponding trunk base sizes) are supposedly:
-///
-/// Acacia:     12x10x12 (1x1)
-/// Birch:      5x8x5 (1x1)
-/// Dark oak:   12x11x12 (2x2)
-/// Jungle:     16x32x16 (2x2), 5x13x5 (1x1)
-/// Oak:        13x19x13 (1x1), 5x7x5 (1x1)
-/// Spruce:     10x30x10 (2x2), 7x10x7 (1x1)
-///
-/// In order to (safely) detect the full extent of one tree, one should use
-/// at least 2x those sizes in all directions if block is leaves, while shorter
-/// search distance can be used for some tree types if block is log.
-///
-/// It would probably be a good idea to use a shared database accessible from
-/// all functions needing this information, for memoization.
-///
-/// For now, the function classifies all trees in the entire WorldExcerpt.
-fn prepare(excerpt: &WorldExcerpt) -> HashMap<BlockCoord, TreeBlockInfo> {
-    let mut database = HashMap::new();
-    let mut tree_id_counter = 0..;
-
-    let (x_len, y_len, z_len) = excerpt.dim();
-    let (x_len, y_len, z_len) = (x_len as i64, y_len as i64, z_len as i64);
-
-    for x in 0..x_len {
-        for y in 0..y_len {
-            for z in 0..z_len {
-                let coordinates = (x, y, z).into();
-                if database.contains_key(&coordinates) {
-                    continue;
-                }
-                if let Some(Block::Log(Log {
-                    stripped: false, ..
-                })) = excerpt.block_at(coordinates)
-                {
-                    // Find all related tree trunks
-                    let log_group = find_connected_logs(excerpt, &coordinates);
-
-                    let tree_id = tree_id_counter.next().unwrap();
-                    for coordinates in log_group {
-                        database.insert(
-                            coordinates,
-                            TreeBlockInfo {
-                                tree_id,
-                                parent: None,
-                            },
-                        );
-                    }
-
-                    // TODO do some parent finding magic
-                    // * find "lowest" tree part
-                    // * flood fill from there:
-                    //  - may need some proper thought on ordering for that...
-                }
-            }
-        }
-    }
-    // TODO Locate individual trees
-    // * locate individual trunk/branch systems
-    // * assign leaves to closest trunk/branch system (flood fill from the systems?)
-    // * assign "parent/child" relationships from leaf to leaf to log to log
-    // Goal:
-    // Easy lookup location -> information about any tree block at that location
-
-    database
-}
-
-/// Find all "connected" logs of the given material
+/// Find all "connected" logs of the given material.
 fn find_connected_logs(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<BlockCoord> {
     let mut log_collection = HashSet::<BlockCoord>::new();
     let mut to_search = VecDeque::<BlockCoord>::new();
@@ -175,7 +65,7 @@ fn find_connected_logs(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<Block
     log_collection
 }
 
-//NB Heavy reuse of find_connected_logs(). Could this be refactored to share code somehow?
+//NB Heavy reuse of find_connected_logs(). Could this be refactored to share code?
 /// Find all "connected" leaves of the given material
 fn find_connected_leaves(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<BlockCoord> {
     let mut leaves_collection = HashSet::<BlockCoord>::new();
@@ -250,7 +140,7 @@ fn neighbours_26(at: &BlockCoord) -> Vec<BlockCoord> {
     neighbours
 }
 
-/// Function for testing out tree finding; replaces tree logs with colourful concrete.
+/// Function for testing out tree finding.
 pub fn rainbow_trees(excerpt: &mut WorldExcerpt) {
     let mut tree_id_counter = 0..;
 
@@ -290,31 +180,6 @@ pub fn rainbow_trees(excerpt: &mut WorldExcerpt) {
                     }
                 }
             }
-        }
-    }
-}
-
-pub fn _rainbow_trees_alternative_approach(excerpt: &mut WorldExcerpt) {
-    let database = prepare(excerpt);
-
-    for (coordinates, TreeBlockInfo { tree_id, .. }) in &database {
-        let colour = ((tree_id % 16) as i32).into();
-        match excerpt.block_at(*coordinates) {
-            Some(Block::Log(_)) => {
-                excerpt.set_block_at(*coordinates, Block::Concrete { colour });
-            }
-            Some(Block::Leaves { .. }) => {
-                excerpt.set_block_at(
-                    *coordinates,
-                    Block::Glass {
-                        colour: Some(colour),
-                    },
-                );
-            }
-            Some(Block::Vines { .. }) => {
-                excerpt.set_block_at(*coordinates, Block::Wool { colour });
-            }
-            _ => (),
         }
     }
 }
@@ -512,11 +377,8 @@ fn find_tree(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<BlockCoord> {
             for coordinates in &tree_block_collection {
                 for neighbour_coordinates in neighbours_4(&coordinates) {
                     for y in (0..=neighbour_coordinates.1).rev() {
-                        let block_coordinates = (
-                            neighbour_coordinates.0,
-                            y,
-                            neighbour_coordinates.2
-                        ).into();
+                        let block_coordinates =
+                            (neighbour_coordinates.0, y, neighbour_coordinates.2).into();
 
                         if tree_block_collection.contains(&block_coordinates) {
                             break;
@@ -543,7 +405,7 @@ fn backtrace(
 ) -> HashMap<BlockCoord, TreeSearchInfo> {
     let mut to_search = VecDeque::<BlockCoord>::new();
     let mut found_nodes = HashMap::<BlockCoord, TreeSearchInfo>::new();
-    let mut foreign = HashMap::<BlockCoord, TreeSearchInfo>::new();
+    let mut foreign_blocks = HashMap::<BlockCoord, TreeSearchInfo>::new();
 
     // Add the node from which we start the search
     to_search.push_back(*from);
@@ -582,7 +444,7 @@ fn backtrace(
             }
 
             // Add to foreign
-            foreign.insert(
+            foreign_blocks.insert(
                 coordinates,
                 TreeSearchInfo {
                     parent: foreign_info.parent,
@@ -612,7 +474,7 @@ fn backtrace(
         }
     }
 
-    foreign
+    foreign_blocks
 }
 
 #[derive(Clone, Copy)]
