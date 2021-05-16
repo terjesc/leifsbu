@@ -16,7 +16,7 @@ const STONE_SUPPORT_HEIGHT_MAX: i64 = 24;
 const WOODEN_SUPPORT_COST: i64 = 200;
 const STONE_SUPPORT_COST: i64 = 300;
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RoadNode {
     pub coordinates: BlockCoord,
     pub kind: RoadNodeKind,
@@ -24,7 +24,7 @@ pub struct RoadNode {
     //elevation: i8,
 }
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Eq, Debug, Hash, PartialEq)]
 pub enum RoadNodeKind {
     Start,
     Ground,

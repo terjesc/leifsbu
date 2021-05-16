@@ -21,7 +21,7 @@ use mcprogedit::world_excerpt::WorldExcerpt;
 
 use crate::areas::*;
 use crate::features::*;
-use crate::partitioning::city_block_divide;
+use crate::partitioning::divide_town_into_blocks;
 use crate::walled_town::*;
 
 fn main() {
@@ -149,7 +149,7 @@ fn main() {
     road_path_image.save("road_path_001.png").unwrap();
 
     // Fill out with minor roads inside town
-    let streets = city_block_divide(
+    let streets = divide_town_into_blocks(
         &town_circumference, &town_center, &roads, &features.terrain,
     );
     for street in streets {
