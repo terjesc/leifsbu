@@ -53,10 +53,10 @@ use std::cmp::{max, min};
 //
 // Algorithm:
 // 0) In advance, the area to be filled with city blocks / plots has been determined.
-// 
+//
 // The end criteria for the algorithm is that all of the given area is "covered" by the
 // influence area of the borders.
-// 
+//
 // 1) Mark the influence area around all roads (and other borders)..
 // 2) If everything within the area is marked, we are done.
 // 3) Add streets in order to cover some unmarked area, and repeat from 2)
@@ -64,7 +64,7 @@ use std::cmp::{max, min};
 // For step 3, different strategies can be used for figuring out where to build the
 // streets. Multiple streets can be built in parallel. Roads can be added. Other types
 // of borders can also be used.
-// 
+//
 // Strategies for getting roads, in step 3:
 // A) Along non-traversible borders, to the side in need of filling, build a street (or
 //    road) in parallel to the non-traversible border, connecting to a traversible
@@ -81,7 +81,7 @@ use std::cmp::{max, min};
 //    the already built roads and streets.
 // D) Start streets perpendicular to the roads, let them grow outwards (more or less
 //    organically) until they reach another road/street/border.
-// 
+//
 //
 // Overall plan is thus:
 //
