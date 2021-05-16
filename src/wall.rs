@@ -1,6 +1,7 @@
 use mcprogedit::block::Block;
 use mcprogedit::world_excerpt::WorldExcerpt;
 use crate::line;
+use crate::tree;
 use crate::types::Snake;
 use crate::features::Features;
 
@@ -22,6 +23,12 @@ pub fn build_wall(
         );
 
         for position in line {
+            tree::chop(excerpt, position);
+            tree::chop(excerpt, position - (0, 1, 0).into());
+            tree::chop(excerpt, position - (0, 2, 0).into());
+            tree::chop(excerpt, position - (0, 3, 0).into());
+            tree::chop(excerpt, position - (0, 4, 0).into());
+            tree::chop(excerpt, position - (0, 5, 0).into());
             excerpt.set_block_at(position, Block::StoneBricks);
             excerpt.set_block_at(position - (0, 1, 0).into(), Block::StoneBricks);
             excerpt.set_block_at(position - (0, 2, 0).into(), Block::StoneBricks);
@@ -37,6 +44,7 @@ pub fn build_wall(
         );
 
         for position in line {
+            tree::chop(excerpt, position);
             excerpt.set_block_at(position, Block::StoneBricks);
         }
 
@@ -47,6 +55,7 @@ pub fn build_wall(
         );
 
         for position in line {
+            tree::chop(excerpt, position);
             excerpt.set_block_at(position, Block::Cobblestone);
         }
     }
@@ -56,8 +65,12 @@ pub fn build_wall(
         // Place pillars
         let ground = features.terrain_height_map.height_at((*x, *z)).unwrap_or(0) as i64;
         for y in ground..ground + 5 {
-            excerpt.set_block_at((*x as i64, y, *z as i64).into(), Block::StoneBricks);
+            let coordinates = (*x as i64, y, *z as i64).into();
+            tree::chop(excerpt, coordinates);
+            excerpt.set_block_at(coordinates, Block::StoneBricks);
         }
-        excerpt.set_block_at((*x as i64, ground + 5, *z as i64).into(), Block::torch());
+        let coordinates = (*x as i64, ground + 5, *z as i64).into();
+        tree::chop(excerpt, coordinates);
+        excerpt.set_block_at(coordinates, Block::torch());
     }
 }
