@@ -105,7 +105,7 @@ pub fn divide_town_into_blocks(
     const COVERED: Luma<u8> = Luma([255u8]);
 
     const ROAD_COVERAGE_RADIUS: u8 = 10;
-    const ROAD_HALF_WIDTH: u8 = 3;
+    const _ROAD_HALF_WIDTH: u8 = 3;
 
     const STREET_COVERAGE_RADIUS: u8 = 8;
     const STREET_COVERAGE_FULL_WIDTH: u8 = 2 * (STREET_COVERAGE_RADIUS + STREET_HALF_WIDTH);
@@ -537,14 +537,13 @@ pub fn divide_town_into_blocks(
 
 /// Given an area surrounded by roads, streets, or other borders,
 /// divide that area into plots.
-pub fn divide_area_into_plots(
-    circumference: &Snake,
-    town_center: &Point,
-    roads: &Vec<RoadPath>,
-    height_map: &GrayImage,
+pub fn _divide_area_into_plots(
+    _circumference: &Snake,
+    _town_center: &Point,
+    _roads: &Vec<RoadPath>,
+    _height_map: &GrayImage,
 ) -> Vec<RoadPath> {
-    // TODO Return a Vec<RoadPath> instead?
-    Vec::new()
+    unimplemented!();
 }
 
 fn attach_to_road_system(path: &Snake, attach_to: &Vec<RoadPath>, epsilon: f32) -> Snake {

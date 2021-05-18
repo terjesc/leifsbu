@@ -11,7 +11,7 @@ use mcprogedit::world_excerpt::WorldExcerpt;
 /// the trunk, further out on/away from the branch, etc.
 ///
 /// If the given location holds vines, remove the vines from there down.
-pub fn prune(excerpt: &mut WorldExcerpt, at: BlockCoord) {
+pub fn _prune(_excerpt: &mut WorldExcerpt, _at: BlockCoord) {
     unimplemented!();
 }
 
@@ -141,7 +141,7 @@ fn neighbours_26(at: &BlockCoord) -> Vec<BlockCoord> {
 }
 
 /// Function for testing out tree finding.
-pub fn rainbow_trees(excerpt: &mut WorldExcerpt) {
+pub fn _rainbow_trees(excerpt: &mut WorldExcerpt) {
     let mut tree_id_counter = 0..;
 
     let (x_len, y_len, z_len) = excerpt.dim();
