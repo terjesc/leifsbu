@@ -5,6 +5,7 @@ extern crate mcprogedit;
 
 mod areas;
 mod features;
+mod geometry;
 mod line;
 mod partitioning;
 mod pathfinding;
