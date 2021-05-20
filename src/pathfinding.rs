@@ -1,7 +1,6 @@
 use image::{GrayImage, RgbImage};
 use imageproc::drawing::draw_line_segment_mut;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
-//use mcprogedit::positioning::Direction16;
 use num_integer::Roots;
 use pathfinding::prelude::astar;
 use std::cmp::{max, min};

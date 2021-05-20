@@ -23,6 +23,7 @@ use mcprogedit::world_excerpt::WorldExcerpt;
 use crate::areas::*;
 use crate::features::*;
 use crate::partitioning::divide_town_into_blocks;
+use crate::road::roads_split;
 use crate::walled_town::*;
 
 fn main() {
@@ -123,7 +124,7 @@ fn main() {
 
     let mut road_path_image = features.coloured_map.clone();
 
-    let mut roads = Vec::new();
+    let mut raw_roads = Vec::new();
 
     for start in start_coordinates {
         if let Some(path) = pathfinding::road_path(
@@ -142,23 +143,40 @@ fn main() {
             pathfinding::draw_road_path(&mut road_path_image, &path);
 
             // Build road in world
-            road::build_road(&mut excerpt, &path, &features.terrain, 3);
+            //road::build_road(&mut excerpt, &path, &features.terrain, 3);
 
             // Store road
-            roads.push(path);
+            raw_roads.push(path);
         }
     }
 
     road_path_image.save("road_path_001.png").unwrap();
 
+    // Split out the raw roads into city roads and country roads
+    let (city_roads, country_roads) = roads_split(&raw_roads, &wall_circle);
+
+    // TODO Collect the roads into one structure (but with differing widths, and possibly other
+    // differing attributes as well)
+    // TODO That full collection is what should be sent to divide_town_into_blocks()
+    // TODO Maybe that full collection should even be borrowed mut and altered from within
+    // divide_town_into_blocks()
+
     // Fill out with minor roads inside town
-    let streets = divide_town_into_blocks(
-        &town_circumference, &town_center, &roads, &features.terrain,
-    );
+    let streets =
+        divide_town_into_blocks(&town_circumference, &town_center, &city_roads, &features.terrain);
+
+    // Build the various roads and streets...
     for street in streets {
         road::build_road(&mut excerpt, &street, &features.terrain, 2);
     }
 
+    for road in country_roads {
+        road::build_road(&mut excerpt, &road, &features.terrain, 3);
+    }
+
+    for road in city_roads {
+        road::build_road(&mut excerpt, &road, &features.terrain, 4);
+    }
 
     // TODO
     // - Fill out with plots inside town
