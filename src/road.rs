@@ -84,8 +84,8 @@ pub fn build_road(
                 excerpt.set_block_at(
                     (x, y - 1, z).into(),
                     //Block::double_slab(Material::SmoothStone),
-                    //Block::Andesite,
-                    Block::BlockOfGold,
+                    Block::Andesite,
+                    //Block::BlockOfGold,
                 );
             }
             RoadNodeKind::WoodenSupport => {

@@ -1,10 +1,10 @@
 use image::{GrayImage, RgbImage};
 use imageproc::drawing::draw_line_segment_mut;
-use mcprogedit::coordinates::BlockCoord;
+use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 //use mcprogedit::positioning::Direction16;
 use num_integer::Roots;
 use pathfinding::prelude::astar;
-use std::cmp::{min, max};
+use std::cmp::{max, min};
 
 use crate::types::*;
 
@@ -44,10 +44,9 @@ pub fn draw_road_path(image: &mut RgbImage, path: &RoadPath) {
     for line in path.windows(2) {
         let line_colour = match (line[0].kind, line[1].kind) {
             (RoadNodeKind::WoodenSupport, _)
-                | (RoadNodeKind::StoneSupport, _)
-                | (_, RoadNodeKind::WoodenSupport)
-                | (_, RoadNodeKind::StoneSupport)
-                => image::Rgb([191u8, 32u8, 32u8]),
+            | (RoadNodeKind::StoneSupport, _)
+            | (_, RoadNodeKind::WoodenSupport)
+            | (_, RoadNodeKind::StoneSupport) => image::Rgb([191u8, 32u8, 32u8]),
             _ => image::Rgb([127u8, 0u8, 0u8]),
         };
 
@@ -58,17 +57,20 @@ pub fn draw_road_path(image: &mut RgbImage, path: &RoadPath) {
     }
 
     // Node markers
-    for RoadNode { coordinates, kind, .. } in path {
+    for RoadNode {
+        coordinates, kind, ..
+    } in path
+    {
         let (x, z) = (coordinates.0, coordinates.2);
-        
+
         let node_colour = match kind {
             RoadNodeKind::WoodenSupport => image::Rgb([64u8, 0u8, 0u8]),
             RoadNodeKind::StoneSupport => image::Rgb([32u8, 32u8, 32u8]),
             _ => continue,
         };
 
-        for x in max(0, x-MARKER_RADIUS)..=min(x+MARKER_RADIUS, x_len as i64 - 1) {
-            for z in max(0, z-MARKER_RADIUS)..=min(z+MARKER_RADIUS, z_len as i64 - 1) {
+        for x in max(0, x - MARKER_RADIUS)..=min(x + MARKER_RADIUS, x_len as i64 - 1) {
+            for z in max(0, z - MARKER_RADIUS)..=min(z + MARKER_RADIUS, z_len as i64 - 1) {
                 image.put_pixel(x as u32, z as u32, node_colour);
             }
         }
@@ -89,7 +91,8 @@ pub fn road_path(
 
         (((a.0 - b.0) * SUB_UNITS).pow(2)
             + ((a.1 - b.1) * SUB_UNITS * STRETCH).pow(2)
-            + ((a.2 - b.2) * SUB_UNITS).pow(2)).sqrt() as u64
+            + ((a.2 - b.2) * SUB_UNITS).pow(2))
+        .sqrt() as u64
     }
 
     let get_terrain_height = |x: i64, z: i64| -> Option<i64> {
@@ -103,14 +106,18 @@ pub fn road_path(
 
     let support_cost = |node: &RoadNode| -> u64 {
         let cost = match node.kind {
-            RoadNodeKind::WoodenSupport => (node.coordinates.1
-                - get_terrain_height(node.coordinates.0, node.coordinates.2).unwrap()
-                + 1)
-                * WOODEN_SUPPORT_COST,
-            RoadNodeKind::StoneSupport => (node.coordinates.1
-                - get_terrain_height(node.coordinates.0, node.coordinates.2).unwrap()
-                + 1)
-                * STONE_SUPPORT_COST,
+            RoadNodeKind::WoodenSupport => {
+                (node.coordinates.1
+                    - get_terrain_height(node.coordinates.0, node.coordinates.2).unwrap()
+                    + 1)
+                    * WOODEN_SUPPORT_COST
+            }
+            RoadNodeKind::StoneSupport => {
+                (node.coordinates.1
+                    - get_terrain_height(node.coordinates.0, node.coordinates.2).unwrap()
+                    + 1)
+                    * STONE_SUPPORT_COST
+            }
             _ => 0,
         } as u64;
         cost
@@ -119,8 +126,8 @@ pub fn road_path(
     // Calculate the cost between two given road nodes.
     let cost = |a: &RoadNode, b: &RoadNode| -> u64 {
         stretched_euclidean_distance(&a.coordinates, &b.coordinates)
-        + support_cost(&a)
-        + support_cost(&b)
+            + support_cost(&a)
+            + support_cost(&b)
     };
 
     let is_ground_blocked = |x: i64, z: i64| -> bool {
@@ -164,13 +171,13 @@ pub fn road_path(
                     } else if terrain_height > (y + CUT_DEPTH_MAX) {
                         // Tunnel
                     } else { // Terrain barely higher than node
-                        // Cut
+                         // Cut
                     }
                 }
             }
             RoadNodeKind::Ground => {
                 for (new_x, new_z) in &ground_neighbour_locations(x, z) {
-                    if let Some(terrain_height) = get_terrain_height(*new_x, *new_z) { 
+                    if let Some(terrain_height) = get_terrain_height(*new_x, *new_z) {
                         // Add edges to Ground
                         if !is_ground_blocked(*new_x, *new_z) {
                             neighbours.push(RoadNode {
@@ -180,8 +187,7 @@ pub fn road_path(
                         }
                         // Add edges to WoodenSupport
                         // NB Currently only flat bridge. Add slopes as well?
-                        if y > terrain_height
-                        && y <= terrain_height + WOODEN_SUPPORT_HEIGHT_MAX {
+                        if y > terrain_height && y <= terrain_height + WOODEN_SUPPORT_HEIGHT_MAX {
                             neighbours.push(RoadNode {
                                 coordinates: (*new_x, y, *new_z).into(),
                                 kind: RoadNodeKind::WoodenSupport,
@@ -189,8 +195,7 @@ pub fn road_path(
                         }
                         // Add edges to StoneSupport
                         // NB Currently only flat bridge. Add slopes as well?
-                        if y > terrain_height
-                        && y <= terrain_height + STONE_SUPPORT_HEIGHT_MAX {
+                        if y > terrain_height && y <= terrain_height + STONE_SUPPORT_HEIGHT_MAX {
                             neighbours.push(RoadNode {
                                 coordinates: (*new_x, y, *new_z).into(),
                                 kind: RoadNodeKind::StoneSupport,
@@ -214,8 +219,7 @@ pub fn road_path(
                 for (new_x, new_z) in &wood_neighbour_locations(x, z) {
                     if let Some(terrain_height) = get_terrain_height(*new_x, *new_z) {
                         // Add support node if above ground and below support limit
-                        if y > terrain_height
-                        && y <= terrain_height + WOODEN_SUPPORT_HEIGHT_MAX {
+                        if y > terrain_height && y <= terrain_height + WOODEN_SUPPORT_HEIGHT_MAX {
                             neighbours.push(RoadNode {
                                 coordinates: (*new_x, y, *new_z).into(),
                                 kind: RoadNodeKind::WoodenSupport,
@@ -239,8 +243,7 @@ pub fn road_path(
                 for (new_x, new_z) in &stone_neighbour_locations(x, z) {
                     if let Some(terrain_height) = get_terrain_height(*new_x, *new_z) {
                         // Add support node if above ground and below support limit
-                        if y > terrain_height
-                        && y <= terrain_height + STONE_SUPPORT_HEIGHT_MAX {
+                        if y > terrain_height && y <= terrain_height + STONE_SUPPORT_HEIGHT_MAX {
                             neighbours.push(RoadNode {
                                 coordinates: (*new_x, y, *new_z).into(),
                                 kind: RoadNodeKind::StoneSupport,
@@ -256,7 +259,10 @@ pub fn road_path(
 
     // Calculates neighbours and cost of traveling to neighbours, for A* algorithm
     let successors = |node: &RoadNode| -> Vec<(RoadNode, u64)> {
-        neighbours(&node).into_iter().map(|n| (n, cost(node, &n))).collect()
+        neighbours(&node)
+            .into_iter()
+            .map(|n| (n, cost(node, &n)))
+            .collect()
     };
 
     // Heuristic, for A* algorithm
@@ -297,73 +303,85 @@ pub fn road_path(
 pub fn road_path_from_snake(path: &Snake, height_map: &GrayImage) -> RoadPath {
     let mut road_path = Vec::with_capacity(path.len());
 
-    for (x, z) in path {
+    for BlockColumnCoord(x, z) in path {
         let image::Luma([y]) = height_map[(*x as u32, *z as u32)];
-        let coordinates: BlockCoord = (*x as i64, y as i64, *z as i64).into();
-        road_path.push(RoadNode { coordinates, kind: RoadNodeKind::Ground });
+        let coordinates: BlockCoord = (*x, y as i64, *z).into();
+        road_path.push(RoadNode {
+            coordinates,
+            kind: RoadNodeKind::Ground,
+        });
     }
 
     road_path
 }
 
 pub fn snake_from_road_path(path: &RoadPath) -> Snake {
-    let mut road_snake = Vec::with_capacity(path.len());
+    let mut road_snake = Vec::<BlockColumnCoord>::with_capacity(path.len());
 
-    for RoadNode { coordinates: BlockCoord(x, _, z), .. } in path {
-        road_snake.push((*x as usize, *z as usize));
+    for RoadNode { coordinates, .. } in path {
+        road_snake.push(BlockColumnCoord::from(*coordinates));
+        //road_snake.push((*x as usize, *z as usize));
     }
 
     road_snake
 }
 
 // NB deprecated
-pub fn path(start: Point, goal: Point, height_map: &GrayImage) -> Option<Snake> {
-    fn euclidean_distance(current: &Point, next: &Point) -> usize {
-        ((current.0 as i64 - next.0 as i64).pow(2) * SUB_UNITS +
-         (current.1 as i64 - next.1 as i64).pow(2) * SUB_UNITS).sqrt() as usize
+pub fn path(
+    start: BlockColumnCoord,
+    goal: BlockColumnCoord,
+    height_map: &GrayImage,
+) -> Option<Snake> {
+    fn euclidean_distance(current: &BlockColumnCoord, next: &BlockColumnCoord) -> usize {
+        ((current.0 as i64 - next.0 as i64).pow(2) * SUB_UNITS
+            + (current.1 as i64 - next.1 as i64).pow(2) * SUB_UNITS)
+            .sqrt() as usize
     }
 
-    let inclination = |current: &Point, next: &Point, distance: &usize| -> usize {
-        let image::Luma([current_height]) = height_map[(current.0 as u32, current.1 as u32)];
-        let image::Luma([next_height]) = height_map[(next.0 as u32, next.1 as u32)];
-        let height = (SUB_UNITS * (current_height as i64 - next_height as i64).abs()) as usize;
-        height / distance
-    };
+    let inclination =
+        |current: &BlockColumnCoord, next: &BlockColumnCoord, distance: &usize| -> usize {
+            let image::Luma([current_height]) = height_map[(current.0 as u32, current.1 as u32)];
+            let image::Luma([next_height]) = height_map[(next.0 as u32, next.1 as u32)];
+            let height = (SUB_UNITS * (current_height as i64 - next_height as i64).abs()) as usize;
+            height / distance
+        };
 
     // TODO consider direction, turning, etc. as part of the equation
 
-    let cost = |current: &Point, next: &Point| -> usize {
+    let cost = |current: &BlockColumnCoord, next: &BlockColumnCoord| -> usize {
         let distance_cost = euclidean_distance(&current, &next);
         distance_cost + inclination(&current, &next, &distance_cost)
     };
 
-    let successors = |point: &Point| -> Vec<(Point, usize)> {
+    let successors = |point: &BlockColumnCoord| -> Vec<(BlockColumnCoord, usize)> {
         // TODO better (larger) neighbourhood (?)
-        let (x, z) = *point;
+        let BlockColumnCoord(x, z) = *point;
         let (x_len, z_len) = height_map.dimensions();
 
-        const RADIUS: usize = 5;
-        let mut neighbours = Vec::with_capacity((2 * RADIUS + 1).pow(2) - 1);
+        const RADIUS: i64 = 5;
+        let mut neighbours =
+            Vec::<BlockColumnCoord>::with_capacity(((2 * RADIUS + 1).pow(2) - 1) as usize);
 
-        for nx in x.saturating_sub(RADIUS)..=min(x+RADIUS, x_len as usize - 1) {
-            for nz in z.saturating_sub(RADIUS)..=min(z+RADIUS, z_len as usize - 1) {
+        for nx in max(x - RADIUS, 0)..=min(x + RADIUS, x_len as i64 - 1) {
+            for nz in max(z - RADIUS, 0)..=min(z + RADIUS, z_len as i64 - 1) {
                 if x != nx || z != nz {
-                    neighbours.push((nx, nz));
+                    neighbours.push((nx, nz).into());
                 }
             }
         }
 
-        neighbours.into_iter().map(|p| (p, cost(point, &p))).collect()
+        neighbours
+            .into_iter()
+            .map(|p| (p, cost(point, &p)))
+            .collect()
     };
 
-    let heuristic = |point: &Point| {
+    let heuristic = |point: &BlockColumnCoord| {
         // TODO consider using a cheaper calculation here...
         euclidean_distance(&point, &goal)
     };
 
-    let success = |point: &Point| -> bool {
-        *point == goal
-    };
+    let success = |point: &BlockColumnCoord| -> bool { *point == goal };
 
     if let Some((path, _)) = astar(&start, successors, heuristic, success) {
         Some(path)
@@ -372,6 +390,7 @@ pub fn path(start: Point, goal: Point, height_map: &GrayImage) -> Option<Snake> 
     }
 }
 
+#[rustfmt::skip]
 fn ground_neighbour_locations(x: i64, z: i64) -> [(i64, i64); 20] {
     [
                 (x-2, z-1), (x-2, z), (x-2, z+1),
@@ -382,6 +401,7 @@ fn ground_neighbour_locations(x: i64, z: i64) -> [(i64, i64); 20] {
     ]
 }
 
+#[rustfmt::skip]
 fn wood_neighbour_locations(x: i64, z: i64) -> [(i64, i64); 16] {
     [
                             (x-5, z),
@@ -398,6 +418,7 @@ fn wood_neighbour_locations(x: i64, z: i64) -> [(i64, i64); 16] {
     ]
 }
 
+#[rustfmt::skip]
 fn stone_neighbour_locations(x: i64, z: i64) -> [(i64, i64); 16] {
     [
                             (x-7, z),

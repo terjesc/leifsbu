@@ -1,5 +1,4 @@
+use mcprogedit::coordinates::BlockColumnCoord;
 
 // types for active contour model
-pub type Point = (usize, usize);
-pub type Snake = Vec<Point>;
-
+pub type Snake = Vec<BlockColumnCoord>;

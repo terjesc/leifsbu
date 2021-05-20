@@ -1,21 +1,22 @@
-use std::cmp::{min, max};
+use std::cmp::{max, min};
 use std::f32::consts::TAU;
 
-use image::{GrayImage, RgbImage};
 use image::imageops::colorops::invert;
+use image::{GrayImage, RgbImage};
 use imageproc::contrast::*;
 use imageproc::distance_transform::*;
 use imageproc::drawing::draw_line_segment_mut;
 use imageproc::map::map_colors;
 use imageproc::morphology::*;
 use imageproc::suppress::suppress_non_maximum;
+use mcprogedit::coordinates::BlockColumnCoord;
 
-use crate::Features;
-use crate::Areas;
 use crate::types::*;
+use crate::Areas;
+use crate::Features;
 
 /// Find the most suitable closed loop perimeter for a town wall.
-pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, Point) {
+pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockColumnCoord) {
     let mut not_town = areas.town.clone();
     invert(&mut not_town);
     not_town.save("T-01 not town.png").unwrap();
@@ -32,22 +33,24 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, Point)
     // TODO Find better cost image.
     // Water depth -> penalty (squared?)
     let water_depth_energy = features.water_depth.clone();
-    let water_depth_energy = map_colors(
-        &water_depth_energy,
-        |p| image::Luma([p[0].saturating_mul(p[0])]),
-    );
-    water_depth_energy.save("T-04 water depth energy.png").unwrap();
+    let water_depth_energy = map_colors(&water_depth_energy, |p| {
+        image::Luma([p[0].saturating_mul(p[0])])
+    });
+    water_depth_energy
+        .save("T-04 water depth energy.png")
+        .unwrap();
 
     // Distance from shore -> penalty
     // TODO Maybe start the penalty a few blocks ashore?
     let mut offshore_distance_energy = features.water.clone();
     invert(&mut offshore_distance_energy);
     distance_transform_mut(&mut offshore_distance_energy, Norm::L1);
-    let offshore_distance_energy = map_colors(
-        &offshore_distance_energy,
-        |p| image::Luma([p[0].saturating_mul(4)]),
-    );
-    offshore_distance_energy.save("T-05 offshore distance energy.png").unwrap();
+    let offshore_distance_energy = map_colors(&offshore_distance_energy, |p| {
+        image::Luma([p[0].saturating_mul(4)])
+    });
+    offshore_distance_energy
+        .save("T-05 offshore distance energy.png")
+        .unwrap();
 
     // Steep terrain -> penalty
     let mut slope_energy = features.scharr.clone();
@@ -65,22 +68,13 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, Point)
             energy[(x, z)] = image::Luma([water_depth
                 .saturating_add(offshore_distance)
                 .saturating_add(slope)
-                .saturating_add(not_town)
-            ]);
+                .saturating_add(not_town)]);
         }
     }
     const NEUTRAL_ENERGY: u8 = u8::MAX / 2;
-    let energy = imageproc::map::map_colors2(
-        &energy,
-        &features.hilltop,
-        |p, q| {
-            image::Luma([
-                p[0]
-                .saturating_add(NEUTRAL_ENERGY)
-                .saturating_sub(q[0])
-            ])
-        },
-    );
+    let energy = imageproc::map::map_colors2(&energy, &features.hilltop, |p, q| {
+        image::Luma([p[0].saturating_add(NEUTRAL_ENERGY).saturating_sub(q[0])])
+    });
     energy.save("T-10 energy.png").unwrap();
 
     // map of distance from (potential) town edge
@@ -94,15 +88,18 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, Point)
     #[derive(Eq, Ord, PartialEq, PartialOrd)]
     struct TownCenterPoint {
         radius: u8,
-        point: Point,
+        point: BlockColumnCoord,
     }
 
     let mut town_center_list = Vec::new();
-    for x in 1..x_len as usize - 1 {
-        for z in 1..z_len as usize - 1 {
+    for x in 1..x_len as i64 - 1 {
+        for z in 1..z_len as i64 - 1 {
             let image::Luma([radius]) = town_centers[(x as u32, z as u32)];
             if radius != 0 {
-                town_center_list.push(TownCenterPoint { radius, point: (x, z) });
+                town_center_list.push(TownCenterPoint {
+                    radius,
+                    point: (x, z).into(),
+                });
             }
         }
     }
@@ -121,7 +118,7 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, Point)
             &features.coloured_map,
             town_center_list[TOWN_INDEX].radius,
             town_center_list[TOWN_INDEX].point,
-            (x_len as usize, z_len as usize),
+            (x_len as i64, z_len as i64).into(),
         ),
         town_center_list[TOWN_INDEX].point,
     )
@@ -130,15 +127,15 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, Point)
 fn circle_snake(
     num_points: usize,
     start_radius: usize,
-    center: Point,
-    max: Point,
+    center: BlockColumnCoord,
+    max: BlockColumnCoord,
 ) -> Snake {
     let mut snake: Snake = Vec::new();
     for i in 0..num_points {
         let angle = i as f32 * TAU / num_points as f32;
-        let x = (center.0 as f32 + start_radius as f32 * angle.cos()) as usize;
-        let y = (center.1 as f32 + start_radius as f32 * angle.sin()) as usize;
-        snake.push((min(x, max.0), min(y, max.1)));
+        let x = (center.0 as f32 + start_radius as f32 * angle.cos()) as i64;
+        let y = (center.1 as f32 + start_radius as f32 * angle.sin()) as i64;
+        snake.push((min(x, max.0), min(y, max.1)).into());
     }
     snake
 }
@@ -148,8 +145,8 @@ fn walled_town_contour_internal(
     costs: &GrayImage,
     map_img: &RgbImage,
     radius: u8,
-    center: Point,
-    max: Point,
+    center: BlockColumnCoord,
+    max: BlockColumnCoord,
 ) -> Snake {
     // Parameters for the active contour model
     const ALPHA: f32 = 0.60; // weight for averaging snake line lengths
@@ -157,20 +154,12 @@ fn walled_town_contour_internal(
     const GAMMA: f32 = 0.10; // weight for costs from image
     const INFLATE: f32 = 5.0; // weight for inflating the balloon
 
-    let (center_x, center_y) = center;
     let num_points = radius as usize * 2;
-    let mut snake = circle_snake(
-        num_points,
-        radius as usize,
-        (center_x, center_y),
-        max,
-    );
+    let mut snake = circle_snake(num_points, radius as usize, center, max);
     save_snake_image(&snake, &map_img, &"acm_000.png".to_string());
 
     for iteration in 1..=100 {
-        let (s, _energy) = active_contour_model(
-            snake.clone(), &costs, ALPHA, BETA, GAMMA, INFLATE
-        );
+        let (s, _energy) = active_contour_model(snake.clone(), &costs, ALPHA, BETA, GAMMA, INFLATE);
 
         if iteration == 1 {
             save_snake_image(&snake, &map_img, &"acm_001.png".to_string());
@@ -187,7 +176,7 @@ fn walled_town_contour_internal(
 }
 
 pub fn draw_snake(image: &mut RgbImage, snake: &Snake) {
-    const MARKER_RADIUS: usize = 0;
+    const MARKER_RADIUS: i64 = 0;
     let (x_len, z_len) = image.dimensions();
 
     // TODO optional line drawing
@@ -201,9 +190,9 @@ pub fn draw_snake(image: &mut RgbImage, snake: &Snake) {
         *b
     });
 
-    for (x, z) in snake {
-        for x in max(0, x-MARKER_RADIUS)..=min(x+MARKER_RADIUS, x_len as usize - 1) {
-            for z in max(0, z-MARKER_RADIUS)..=min(z+MARKER_RADIUS, z_len as usize - 1) {
+    for BlockColumnCoord(x, z) in snake {
+        for x in max(0, x - MARKER_RADIUS)..=min(x + MARKER_RADIUS, x_len as i64 - 1) {
+            for z in max(0, z - MARKER_RADIUS)..=min(z + MARKER_RADIUS, z_len as i64 - 1) {
                 image.put_pixel(x as u32, z as u32, image::Rgb([255u8, 127u8, 127u8]));
             }
         }
@@ -235,12 +224,14 @@ fn active_contour_model(
     // !?  <><><>  !?
     //
     //     !?  !?
-    fn neighbourhood((x, y): &Point, (x_len, y_len): (u32, u32)) -> Snake {
-        const RADIUS: usize = 3;
+    fn neighbourhood(point: &BlockColumnCoord, (x_len, y_len): (u32, u32)) -> Snake {
+        const RADIUS: i64 = 3;
+
+        let BlockColumnCoord(x, y) = point;
         let mut neighbourhood = Vec::with_capacity(9);
-        for x in x.saturating_sub(RADIUS)..=min(x + RADIUS, x_len as usize - 1) {
-            for y in y.saturating_sub(RADIUS)..=min(y + RADIUS, y_len as usize - 1) {
-                neighbourhood.push((x, y));
+        for x in x.saturating_sub(RADIUS)..=min(x + RADIUS, x_len as i64 - 1) {
+            for y in y.saturating_sub(RADIUS)..=min(y + RADIUS, y_len as i64 - 1) {
+                neighbourhood.push((x, y).into());
             }
         }
         neighbourhood
@@ -250,10 +241,12 @@ fn active_contour_model(
         (alpha, beta, inflate): (f32, f32, f32),
         snake: &Snake,
         index: usize,
-        (x, y): Point,
+        point: BlockColumnCoord,
     ) -> f32 {
         let i_prev = (index + snake.len() - 1) % snake.len();
         let i_next = (index + 1) % snake.len();
+
+        let BlockColumnCoord(x, y) = point;
 
         // Distance energy (difference from average segment distance)
         // TODO Consider some «target distance» metric as well
@@ -280,17 +273,20 @@ fn active_contour_model(
             / 2.0f32;
 
         // Curvature energy
-        let curvature_energy =
-            (snake[i_prev].0 as f32 - 2.0 * x as f32 + snake[i_next].0 as f32).powi(2)
+        let curvature_energy = (snake[i_prev].0 as f32 - 2.0 * x as f32 + snake[i_next].0 as f32)
+            .powi(2)
             + (snake[i_prev].1 as f32 - 2.0 * y as f32 + snake[i_next].1 as f32).powi(2);
 
         // Inflation energy
         let (x_current, y_current, x1, y1, x2, y2) = (
-            snake[index].0 as f32, snake[index].1 as f32,
-            snake[i_prev].0 as f32, snake[i_prev].1 as f32,
-            snake[i_next].0 as f32, snake[i_next].1 as f32,
+            snake[index].0 as f32,
+            snake[index].1 as f32,
+            snake[i_prev].0 as f32,
+            snake[i_prev].1 as f32,
+            snake[i_next].0 as f32,
+            snake[i_next].1 as f32,
         );
-        let p1p2_len = ((x2-x1).powi(2) + (y2-y1).powi(2)).sqrt();
+        let p1p2_len = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
         let cross_current = (x2 - x1) * (y1 - y_current) - (x1 - x_current) * (y2 - y1);
         let cross_new = (x2 - x1) * (y1 - y as f32) - (x1 - x as f32) * (y2 - y1);
         let inflation_energy = ((cross_new - cross_current) / p1p2_len - 1.0).abs();
@@ -298,11 +294,7 @@ fn active_contour_model(
         alpha * distance_energy + beta * curvature_energy + inflate * inflation_energy
     }
 
-    fn external_energy(
-        gamma: f32,
-        image_costs: &GrayImage,
-        at: Point,
-    ) -> f32 {
+    fn external_energy(gamma: f32, image_costs: &GrayImage, at: BlockColumnCoord) -> f32 {
         let image::Luma([cost]) = image_costs[(at.0 as u32, at.1 as u32)];
         gamma * cost as f32
     }

@@ -10,7 +10,7 @@ use imageproc::morphology::*;
 use imageproc::region_labelling::{connected_components, Connectivity};
 use imageproc::stats::histogram;
 use imageproc::template_matching::{find_extremes, Extremes};
-use mcprogedit::coordinates::BlockCoord;
+use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 use num_integer::Roots;
 use std::cmp::{max, min};
 
@@ -98,7 +98,7 @@ use std::cmp::{max, min};
 /// within the town area are within reasonable distance from a road or street.
 pub fn divide_town_into_blocks(
     circumference: &Snake,
-    town_center: &Point,
+    town_center: &BlockColumnCoord,
     roads: &Vec<RoadPath>,
     height_map: &GrayImage,
 ) -> Vec<RoadPath> {
@@ -278,14 +278,20 @@ pub fn divide_town_into_blocks(
             (normal.1 * -TOWN_BORDER_DISTANCE_TO_FAR_STREET) / 20,
         );
 
-        street_close_to_border.push((
-            (full_circumference[index + 1].0 as i64 + close_offset.0) as usize,
-            (full_circumference[index + 1].1 as i64 + close_offset.1) as usize,
-        ));
-        street_far_from_border.push((
-            (full_circumference[index + 1].0 as i64 + far_offset.0) as usize,
-            (full_circumference[index + 1].1 as i64 + far_offset.1) as usize,
-        ));
+        street_close_to_border.push(
+            (
+                (full_circumference[index + 1].0 as i64 + close_offset.0),
+                (full_circumference[index + 1].1 as i64 + close_offset.1),
+            )
+                .into(),
+        );
+        street_far_from_border.push(
+            (
+                (full_circumference[index + 1].0 as i64 + far_offset.0),
+                (full_circumference[index + 1].1 as i64 + far_offset.1),
+            )
+                .into(),
+        );
     }
 
     // Modify the street options, in order to get reasonable segment lengths
@@ -539,7 +545,7 @@ pub fn divide_town_into_blocks(
 /// divide that area into plots.
 pub fn _divide_area_into_plots(
     _circumference: &Snake,
-    _town_center: &Point,
+    _town_center: &BlockColumnCoord,
     _roads: &Vec<RoadPath>,
     _height_map: &GrayImage,
 ) -> Vec<RoadPath> {
@@ -564,14 +570,18 @@ fn attach_to_road_system(path: &Snake, attach_to: &Vec<RoadPath>, epsilon: f32) 
     path
 }
 
-fn closest_road_point(roads: &Vec<RoadPath>, closest_to: &Point, epsilon: f32) -> Option<Point> {
+fn closest_road_point(
+    roads: &Vec<RoadPath>,
+    closest_to: &BlockColumnCoord,
+    epsilon: f32,
+) -> Option<BlockColumnCoord> {
     let mut closest_point = *closest_to;
     let mut closest_manhattan = usize::MAX / 2;
     let mut closest_euclidean = f32::MAX;
 
     for road in roads {
         for node in road {
-            let node_point = (node.coordinates.0 as usize, node.coordinates.2 as usize);
+            let node_point = node.coordinates.into();
             let manhattan = manhattan_distance(node_point, *closest_to);
             if manhattan < (2 * closest_manhattan) {
                 let euclidean = euclidean_distance(node_point, *closest_to);
@@ -623,7 +633,7 @@ fn closest_road_node(
     }
 }
 
-fn manhattan_distance(a: Point, b: Point) -> usize {
+fn manhattan_distance(a: BlockColumnCoord, b: BlockColumnCoord) -> usize {
     (a.0 as i64 - b.0 as i64).abs() as usize + (a.1 as i64 - b.1 as i64).abs() as usize
 }
 
@@ -631,7 +641,7 @@ fn manhattan_distance_3d(a: BlockCoord, b: BlockCoord) -> usize {
     (a.0 - b.0).abs() as usize + (a.1 - b.1).abs() as usize + (a.2 - b.2).abs() as usize
 }
 
-fn euclidean_distance(a: Point, b: Point) -> f32 {
+fn euclidean_distance(a: BlockColumnCoord, b: BlockColumnCoord) -> f32 {
     ((a.0 as f32 - b.0 as f32).powi(2) + (a.1 as f32 - b.1 as f32).powi(2)).sqrt()
 }
 
@@ -642,7 +652,7 @@ fn euclidean_distance_3d(a: BlockCoord, b: BlockCoord) -> f32 {
     .sqrt()
 }
 
-fn snake_bounding_box(snake: &Snake) -> (Point, Point) {
+fn snake_bounding_box(snake: &Snake) -> (BlockColumnCoord, BlockColumnCoord) {
     let offset = snake
         .iter()
         .copied()
@@ -651,6 +661,7 @@ fn snake_bounding_box(snake: &Snake) -> (Point, Point) {
                 if a.0 < b.0 { a.0 } else { b.0 },
                 if a.1 < b.1 { a.1 } else { b.1 },
             )
+                .into()
         })
         .unwrap();
     let dimensions_plus_offset = snake
@@ -661,17 +672,24 @@ fn snake_bounding_box(snake: &Snake) -> (Point, Point) {
                 if a.0 > b.0 { a.0 } else { b.0 },
                 if a.1 > b.1 { a.1 } else { b.1 },
             )
+                .into()
         })
         .unwrap();
     let dimensions = (
         dimensions_plus_offset.0 - offset.0,
         dimensions_plus_offset.1 - offset.1,
-    );
+    )
+        .into();
 
     (offset, dimensions)
 }
 
-fn draw_offset_snake(image: &mut GrayImage, snake: &Snake, offset: &Point, colour: Luma<u8>) {
+fn draw_offset_snake(
+    image: &mut GrayImage,
+    snake: &Snake,
+    offset: &BlockColumnCoord,
+    colour: Luma<u8>,
+) {
     if snake.len() <= 1 {
         return;
     }
@@ -687,7 +705,12 @@ fn draw_offset_snake(image: &mut GrayImage, snake: &Snake, offset: &Point, colou
     });
 }
 
-fn draw_offset_road(image: &mut GrayImage, road: &RoadPath, offset: &Point, colour: Luma<u8>) {
+fn draw_offset_road(
+    image: &mut GrayImage,
+    road: &RoadPath,
+    offset: &BlockColumnCoord,
+    colour: Luma<u8>,
+) {
     road[1..].iter().fold(road[0], |a, b| {
         draw_line_segment_mut(
             image,
@@ -794,7 +817,7 @@ fn location_from_value(image: &GrayImage, foreground: Luma<u8>) -> Option<(u32, 
 }
 
 /// Make a snake out of the points in `snake` that are within the area marked by `stencil`.
-fn sub_snake(snake: &Snake, stencil: &GrayImage, offset: &Point) -> Snake {
+fn sub_snake(snake: &Snake, stencil: &GrayImage, offset: &BlockColumnCoord) -> Snake {
     let mut new_snake = Vec::new();
     let mut snake_started: bool = false;
     let mut snake_ended: bool = false;
@@ -917,7 +940,7 @@ fn resnake(snake: &Snake, min_length: f32, max_length: f32) -> Snake {
             for i in (0..num_points).rev() {
                 let x = point.0 as f32 - (i as f32 * x_unit);
                 let z = point.1 as f32 - (i as f32 * z_unit);
-                output.push((x as usize, z as usize));
+                output.push((x as i64, z as i64).into());
             }
 
             accumulated_distance = 0f32;
