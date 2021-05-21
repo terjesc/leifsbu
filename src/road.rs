@@ -56,41 +56,31 @@ fn road_split(road: &RoadPath, polygon: &Snake) -> (Vec<RoadPath>, Vec<RoadPath>
 
             let is_inside = InOutSide::Inside
                 == point_position_relative_to_polygon(node.coordinates.into(), polygon);
+
             if previous_was_inside == is_inside {
+                // The current accumulator is on the same side as the new node, so it is extended.
                 acc.push(*node);
                 (is_inside, acc)
-            } else if previous_was_inside {
-                // TODO correct both reasoning and logic here;
-                // "inside" should NOT contain the neighbouring "outside" node
-                // "outside" SHOULD contain the neighbouring "inside" node
-                //
-                // We have a transition from "inside" to "outside", where `acc` contains
-                // everything "inside"
-
-                // The beginning "outside" should contain both the last "inside" node,
-                // and `node`, which is the first fully "outside" node.
+            } else if !previous_was_inside {
+                // The new accumulator is inside, and should contain both the previous node
+                // and the current node. (The transition edge is part of the inside.)
                 let mut new_acc = Vec::new();
                 new_acc.push(*acc.last().unwrap());
                 new_acc.push(*node);
 
-                inside.push(acc);
+                // The current accumulator is outside, and should not contain the current node.
+                outside.push(acc);
 
                 (is_inside, new_acc)
             } else {
-                // TODO correct both reasoning and logic here;
-                // "inside" should NOT contain the neighbouring "outside" node
-                // "outside" SHOULD contain the neighbouring "inside" node
-                //
-                // We have a transition from "outside" to "inside", where `acc` contains
-                // everything "outside" except the first "inside" node which should also
-                // be part of "outside".
-
-                // The beginning "inside" should contain the current node only.
+                // The new accumulator is outside, and should contain the current node only.
                 let mut new_acc = Vec::new();
-                new_acc.push(*acc.last().unwrap());
                 new_acc.push(*node);
 
-                outside.push(acc);
+                // The current accumulator is inside, and should contain the current node.
+                // (The transition edge is part of the inside.)
+                acc.push(*node);
+                inside.push(acc);
 
                 (is_inside, new_acc)
             }
