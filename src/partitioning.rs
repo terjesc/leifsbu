@@ -684,7 +684,7 @@ fn snake_bounding_box(snake: &Snake) -> (BlockColumnCoord, BlockColumnCoord) {
     (offset, dimensions)
 }
 
-fn draw_offset_snake(
+pub fn draw_offset_snake(
     image: &mut GrayImage,
     snake: &Snake,
     offset: &BlockColumnCoord,
@@ -715,12 +715,12 @@ fn draw_offset_road(
         draw_line_segment_mut(
             image,
             (
-                (a.coordinates.0 - offset.0 as i64) as f32,
-                (a.coordinates.2 - offset.1 as i64) as f32,
+                (a.coordinates.0 - offset.0) as f32,
+                (a.coordinates.2 - offset.1) as f32,
             ),
             (
-                (b.coordinates.0 - offset.0 as i64) as f32,
-                (b.coordinates.2 - offset.1 as i64) as f32,
+                (b.coordinates.0 - offset.0) as f32,
+                (b.coordinates.2 - offset.1) as f32,
             ),
             colour,
         );

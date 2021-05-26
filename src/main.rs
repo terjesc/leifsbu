@@ -22,6 +22,7 @@ use mcprogedit::world_excerpt::WorldExcerpt;
 
 use crate::areas::*;
 use crate::features::*;
+use crate::geometry::{extract_blocks, LandUsageGraph};
 use crate::partitioning::divide_town_into_blocks;
 use crate::road::roads_split;
 use crate::walled_town::*;
@@ -67,6 +68,7 @@ fn main() {
 
     // Decide on area usage
     // ********************
+
     // Some thoughts:
     // - Fields on fertile, reasonably flat, open land
     // - Wind mills on hills within or by fertile land
@@ -92,10 +94,9 @@ fn main() {
     }
     path_image.save("path_001.png").unwrap();
 
-    // Build wall
+    // Get full wall circle, by copying the first node of the wall to the end.
     let mut wall_circle = town_circumference.clone();
     wall_circle.push(town_circumference[0]);
-    wall::build_wall(&mut excerpt, &wall_circle, &features);
 
     // TODO
     // - Find primary sector areas (agriculture, fishing, forestry, mining)
@@ -142,28 +143,64 @@ fn main() {
             // Draw road on map
             pathfinding::draw_road_path(&mut road_path_image, &path);
 
-            // Build road in world
-            //road::build_road(&mut excerpt, &path, &features.terrain, 3);
-
             // Store road
             raw_roads.push(path);
         }
     }
-
     road_path_image.save("road_path_001.png").unwrap();
 
     // Split out the raw roads into city roads and country roads
-    let (city_roads, country_roads) = roads_split(&raw_roads, &wall_circle);
-
-    // TODO Collect the roads into one structure (but with differing widths, and possibly other
-    // differing attributes as well)
-    // TODO That full collection is what should be sent to divide_town_into_blocks()
-    // TODO Maybe that full collection should even be borrowed mut and altered from within
-    // divide_town_into_blocks()
+    let (mut city_roads, country_roads) = roads_split(&raw_roads, &wall_circle);
 
     // Fill out with minor roads inside town
-    let streets =
+    let mut streets =
         divide_town_into_blocks(&town_circumference, &town_center, &city_roads, &features.terrain);
+
+
+    // Make land usage plan
+    // ********************
+
+    // Add intersection points between roads/streets and circumference,
+    // so that the geometry actually describes distinct areas.
+    geometry::add_intersection_points(&mut streets, &mut wall_circle);
+    geometry::add_intersection_points(&mut city_roads, &mut wall_circle);
+
+    let mut land_usage_graph = LandUsageGraph::new();
+    land_usage_graph.add_roads(&streets);
+    land_usage_graph.add_roads(&city_roads);
+    land_usage_graph.add_clockwise_circumference(&wall_circle);
+
+    // Get the polygons for each "city block"
+    let districts = extract_blocks(&land_usage_graph);
+
+    // Make images of the extracted city blocks (for debug visuals only)
+    for (colour, district) in districts.iter().enumerate() {
+        let mut district_image = image::ImageBuffer::new(x_len as u32, z_len as u32);
+        geometry::draw_area(
+            &mut district_image,
+            &district,
+            BlockColumnCoord(0, 0),
+            image::Luma([63u8]),
+        );
+        partitioning::draw_offset_snake(
+            &mut district_image,
+            &district,
+            &BlockColumnCoord(0, 0),
+            image::Luma([255u8]),
+        );
+        district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
+    }
+    //district_image.save("D-01 districts.png").unwrap();
+
+    // TODO Algorithm for splitting the blocks into plots
+    // TODO Algorithm for extracting (WorldExcerpt, 2D-description) from WorldExcerpt + plot
+
+
+    // Build structures
+    // ****************
+
+    // Build that wall! (But who is going to pay for it?)
+    wall::build_wall(&mut excerpt, &wall_circle, &features);
 
     // Build the various roads and streets...
     for street in streets {
@@ -178,18 +215,19 @@ fn main() {
         road::build_road(&mut excerpt, &road, &features.terrain, 4);
     }
 
+    // TODO build some actual structures on the plots!
+
     // TODO
-    // - Fill out with plots inside town
     // - If player location is inside town, not on road, then make square plot there
     // - If player location is outside town, make road from there to nearest major road,
     //   and put signs towards town. Bridges, boat trips, etc. may be needed...
-    // - Build structures on plots
 
     /*
     println!("Testing rainbow trees!");
     tree::rainbow_trees(&mut excerpt);
     println!("Rainbow trees finished!");
     */
+
 
     // World export
     // ************
