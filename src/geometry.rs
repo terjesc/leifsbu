@@ -428,6 +428,24 @@ fn intersection(edge_a: RawEdge, edge_b: RawEdge) -> IntersectionPoints {
     }
 }
 
+/// Calculates the area of a polygon, using the shoelace formula
+pub fn area(polygon: &Vec<BlockColumnCoord>) -> i64 {
+    if polygon.len() < 3 {
+        return 0;
+    }
+
+    let additional_term = if polygon.first() != polygon.last() {
+        polygon.last().unwrap().0 * polygon.first().unwrap().1
+            - polygon.last().unwrap().1 * polygon.first().unwrap().0
+    } else {
+        0
+    };
+
+    polygon.windows(2).fold(additional_term, |area: i64, edge: _| {
+        area + (edge[0].0 * edge[1].1 - edge[0].1 * edge[1].0)
+    }) / 2
+}
+
 pub fn draw_area(
     image: &mut GrayImage,
     area: &Vec<BlockColumnCoord>,

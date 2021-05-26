@@ -189,6 +189,7 @@ fn main() {
             image::Luma([255u8]),
         );
         district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
+        println!("District {} has area {}.", colour, geometry::area(&district));
     }
     //district_image.save("D-01 districts.png").unwrap();
 
