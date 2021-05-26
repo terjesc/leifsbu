@@ -1,3 +1,4 @@
+use crate::geometry;
 use crate::pathfinding;
 use crate::pathfinding::{road_path_from_snake, snake_from_road_path, RoadPath};
 use crate::types::*;
@@ -582,9 +583,9 @@ fn closest_road_point(
     for road in roads {
         for node in road {
             let node_point = node.coordinates.into();
-            let manhattan = manhattan_distance(node_point, *closest_to);
+            let manhattan = geometry::manhattan_distance(node_point, *closest_to);
             if manhattan < (2 * closest_manhattan) {
-                let euclidean = euclidean_distance(node_point, *closest_to);
+                let euclidean = geometry::euclidean_distance(node_point, *closest_to);
                 if euclidean < closest_euclidean {
                     closest_point = node_point;
                     closest_manhattan = manhattan;
@@ -614,9 +615,9 @@ fn closest_road_node(
     for road in roads {
         for node in road {
             let node_point = node.coordinates;
-            let manhattan = manhattan_distance_3d(node_point, *closest_to);
+            let manhattan = geometry::manhattan_distance_3d(node_point, *closest_to);
             if manhattan < (2 * closest_manhattan) {
-                let euclidean = euclidean_distance_3d(node_point, *closest_to);
+                let euclidean = geometry::euclidean_distance_3d(node_point, *closest_to);
                 if euclidean < closest_euclidean {
                     closest_point = node_point;
                     closest_manhattan = manhattan;
@@ -631,25 +632,6 @@ fn closest_road_node(
     } else {
         None
     }
-}
-
-fn manhattan_distance(a: BlockColumnCoord, b: BlockColumnCoord) -> usize {
-    (a.0 as i64 - b.0 as i64).abs() as usize + (a.1 as i64 - b.1 as i64).abs() as usize
-}
-
-fn manhattan_distance_3d(a: BlockCoord, b: BlockCoord) -> usize {
-    (a.0 - b.0).abs() as usize + (a.1 - b.1).abs() as usize + (a.2 - b.2).abs() as usize
-}
-
-fn euclidean_distance(a: BlockColumnCoord, b: BlockColumnCoord) -> f32 {
-    ((a.0 as f32 - b.0 as f32).powi(2) + (a.1 as f32 - b.1 as f32).powi(2)).sqrt()
-}
-
-fn euclidean_distance_3d(a: BlockCoord, b: BlockCoord) -> f32 {
-    ((a.0 as f32 - b.0 as f32).powi(2)
-        + (a.1 as f32 - b.1 as f32).powi(2)
-        + (a.2 as f32 - b.2 as f32).powi(2))
-    .sqrt()
 }
 
 fn snake_bounding_box(snake: &Snake) -> (BlockColumnCoord, BlockColumnCoord) {

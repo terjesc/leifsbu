@@ -1,4 +1,5 @@
 use crate::pathfinding::{RoadNode, RoadPath};
+use crate::plot::{Plot, PlotEdge, PlotEdgeKind};
 use crate::types::Snake;
 use image::GrayImage;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
@@ -6,7 +7,7 @@ use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::f32::consts::PI;
 
-type RawEdge = (BlockColumnCoord, BlockColumnCoord);
+pub type RawEdge = (BlockColumnCoord, BlockColumnCoord);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LeftRightSide {
@@ -18,7 +19,7 @@ pub enum LeftRightSide {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InOutSide {
     Inside,
-    On,
+    _On,
     Outside,
 }
 
@@ -71,7 +72,7 @@ pub fn point_position_relative_to_polygon(
 }
 
 #[derive(Clone, Copy, Debug, Ord, PartialEq, PartialOrd, Eq)]
-enum EdgeKind {
+pub enum EdgeKind {
     Road,
     Street,
     Wall,
@@ -103,8 +104,51 @@ impl LandUsageGraph {
         }
     }
 
-    // TODO ability to choose kind of edge, and width
-    pub fn add_roads(&mut self, roads: &Vec<RoadPath>) {
+    pub fn plot_from_area(&self, area: &Vec<BlockColumnCoord>) -> Plot {
+        let mut edges = Vec::new();
+
+        for edge in area.windows(2) {
+            match self.edge_meta.get(&(edge[0], edge[1])) {
+                None => (),
+                Some(EdgeMeta { kind, width }) => {
+                    // NB we don't have heights for circumference here...
+                    let y0 = self
+                        .vertex_meta
+                        .get(&edge[0])
+                        .unwrap()
+                        .access_y
+                        .unwrap_or(0);
+                    let y1 = self
+                        .vertex_meta
+                        .get(&edge[1])
+                        .unwrap()
+                        .access_y
+                        .unwrap_or(0);
+
+                    let kind = match kind {
+                        EdgeKind::Road | EdgeKind::Street => PlotEdgeKind::Road {
+                            width: *width as usize,
+                        },
+                        EdgeKind::Wall => PlotEdgeKind::Wall {
+                            width: *width as usize,
+                        },
+                    };
+                    edges.push(PlotEdge {
+                        kind,
+                        points: vec![
+                            BlockCoord(edge[0].0, y0, edge[0].1),
+                            BlockCoord(edge[1].0, y1, edge[1].1),
+                        ],
+                    });
+                }
+            }
+        }
+
+        Plot { edges }
+    }
+
+    /// Add roads to the land usage graph, of the given kind and width.
+    pub fn add_roads(&mut self, roads: &Vec<RoadPath>, kind: EdgeKind, width: i64) {
         for road in roads {
             for segment in road.windows(2) {
                 let p0 = segment[0].coordinates.into();
@@ -113,10 +157,7 @@ impl LandUsageGraph {
                 // Add edges
                 self.edges.entry(p0).or_insert(Vec::new()).push(p1);
                 self.edges.entry(p1).or_insert(Vec::new()).push(p0);
-                let meta = EdgeMeta {
-                    kind: EdgeKind::Street,
-                    width: 2,
-                };
+                let meta = EdgeMeta { kind, width };
                 self.edge_meta.insert((p0, p1), meta);
                 self.edge_meta.insert((p1, p0), meta);
 
@@ -137,24 +178,15 @@ impl LandUsageGraph {
         }
     }
 
-    // TODO the circumference should probably get changed to counter-clockwise,
-    //      all over the project, for consistency, but for now it is clockwise
-    //      everywhere...
-    /// Add a clockwise circumference to the graph
-    pub fn add_clockwise_circumference(&mut self, circumference: &Snake) {
+    /// Add a circumference to the graph, of the given kind and width.
+    pub fn add_circumference(&mut self, circumference: &Snake, kind: EdgeKind, width: i64) {
         for segment in circumference.windows(2) {
             let p0 = segment[0];
             let p1 = segment[1];
 
             // Add edges
             self.edges.entry(p0).or_insert(Vec::new()).push(p1);
-            self.edge_meta.insert(
-                (p0, p1),
-                EdgeMeta {
-                    kind: EdgeKind::Wall,
-                    width: 3,
-                },
-            );
+            self.edge_meta.insert((p0, p1), EdgeMeta { kind, width });
 
             // Add vertices
             self.vertex_meta.insert(p0, VertexMeta { access_y: None });
@@ -222,7 +254,7 @@ impl LandUsageGraph {
     }
 }
 
-// TODO extend output to also contain data on edge kind, y value, etc...
+/// Returns a set of polygons corresponding to the areas sectioned by the structures in `graph`.
 pub fn extract_blocks(graph: &LandUsageGraph) -> Vec<Vec<BlockColumnCoord>> {
     let mut queue = VecDeque::<RawEdge>::new();
     let mut visited = HashSet::<RawEdge>::new();
@@ -382,7 +414,6 @@ enum IntersectionPoints {
 }
 
 fn intersection(edge_a: RawEdge, edge_b: RawEdge) -> IntersectionPoints {
-    // TODO handle the case where points actually coincide?
     let (BlockColumnCoord(a_x1, a_y1), BlockColumnCoord(a_x2, a_y2)) = edge_a;
     let (BlockColumnCoord(b_x1, b_y1), BlockColumnCoord(b_x2, b_y2)) = edge_b;
 
@@ -429,7 +460,7 @@ fn intersection(edge_a: RawEdge, edge_b: RawEdge) -> IntersectionPoints {
 }
 
 /// Calculates the area of a polygon, using the shoelace formula
-pub fn area(polygon: &Vec<BlockColumnCoord>) -> i64 {
+pub fn area(polygon: &[BlockColumnCoord]) -> i64 {
     if polygon.len() < 3 {
         return 0;
     }
@@ -441,9 +472,12 @@ pub fn area(polygon: &Vec<BlockColumnCoord>) -> i64 {
         0
     };
 
-    polygon.windows(2).fold(additional_term, |area: i64, edge: _| {
-        area + (edge[0].0 * edge[1].1 - edge[0].1 * edge[1].0)
-    }) / 2
+    polygon
+        .windows(2)
+        .fold(additional_term, |area: i64, edge: _| {
+            area + (edge[0].0 * edge[1].1 - edge[0].1 * edge[1].0)
+        })
+        / 2
 }
 
 pub fn draw_area(
@@ -466,6 +500,25 @@ pub fn draw_area(
             }
         }
     }
+}
+
+pub fn manhattan_distance(a: BlockColumnCoord, b: BlockColumnCoord) -> usize {
+    (a.0 as i64 - b.0 as i64).abs() as usize + (a.1 as i64 - b.1 as i64).abs() as usize
+}
+
+pub fn manhattan_distance_3d(a: BlockCoord, b: BlockCoord) -> usize {
+    (a.0 - b.0).abs() as usize + (a.1 - b.1).abs() as usize + (a.2 - b.2).abs() as usize
+}
+
+pub fn euclidean_distance(a: BlockColumnCoord, b: BlockColumnCoord) -> f32 {
+    ((a.0 as f32 - b.0 as f32).powi(2) + (a.1 as f32 - b.1 as f32).powi(2)).sqrt()
+}
+
+pub fn euclidean_distance_3d(a: BlockCoord, b: BlockCoord) -> f32 {
+    ((a.0 as f32 - b.0 as f32).powi(2)
+        + (a.1 as f32 - b.1 as f32).powi(2)
+        + (a.2 as f32 - b.2 as f32).powi(2))
+    .sqrt()
 }
 
 #[cfg(test)]

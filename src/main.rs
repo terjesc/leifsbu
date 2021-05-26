@@ -9,6 +9,7 @@ mod geometry;
 mod line;
 mod partitioning;
 mod pathfinding;
+mod plot;
 mod road;
 mod tree;
 mod types;
@@ -17,6 +18,7 @@ mod walled_town;
 
 use std::path::Path;
 
+use imageproc::stats::histogram;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
@@ -166,9 +168,9 @@ fn main() {
     geometry::add_intersection_points(&mut city_roads, &mut wall_circle);
 
     let mut land_usage_graph = LandUsageGraph::new();
-    land_usage_graph.add_roads(&streets);
-    land_usage_graph.add_roads(&city_roads);
-    land_usage_graph.add_clockwise_circumference(&wall_circle);
+    land_usage_graph.add_roads(&streets, geometry::EdgeKind::Street, 2);
+    land_usage_graph.add_roads(&city_roads, geometry::EdgeKind::Road, 4);
+    land_usage_graph.add_circumference(&wall_circle, geometry::EdgeKind::Wall, 3);
 
     // Get the polygons for each "city block"
     let districts = extract_blocks(&land_usage_graph);
@@ -190,6 +192,14 @@ fn main() {
         );
         district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
         println!("District {} has area {}.", colour, geometry::area(&district));
+    
+        let stats = histogram(&district_image);
+        let surface_area = stats.channels[0][63];
+        let border_area = stats.channels[0][255];
+        println!(
+            "District {} image areas: {} + ({} / 2) = {}",
+            colour, surface_area, border_area, surface_area + (border_area / 2)
+        );
     }
     //district_image.save("D-01 districts.png").unwrap();
 
