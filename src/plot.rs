@@ -167,11 +167,11 @@ impl Plot {
                                     // Add new edges along the split line.
                                     edges_1.push(PlotEdge {
                                         kind: PlotEdgeKind::Plot,
-                                        points: (edge.points.0, edges_1[0].points.1),
+                                        points: (edge.points.0, edges_1[0].points.0),
                                     });
                                     edges_0.push(PlotEdge {
                                         kind: PlotEdgeKind::Plot,
-                                        points: (edges_1[0].points.1, edge.points.0),
+                                        points: (edges_1[0].points.0, edge.points.0),
                                     });
                                     // Add edge to plot 0
                                     edges_0.push(edge.clone());
@@ -195,11 +195,11 @@ impl Plot {
                                 // Add new edges along split line.
                                 edges_1.push(PlotEdge {
                                     kind: PlotEdgeKind::Plot,
-                                    points: (full_coordinates, edges_1[0].points.1),
+                                    points: (full_coordinates, edges_1[0].points.0),
                                 });
                                 edges_0.push(PlotEdge {
                                     kind: PlotEdgeKind::Plot,
-                                    points: (edges_1[0].points.1, full_coordinates),
+                                    points: (edges_1[0].points.0, full_coordinates),
                                 });
                                 // Add part of edge belonging to plot 0.
                                 edges_0.push(PlotEdge {
