@@ -26,6 +26,7 @@ use crate::areas::*;
 use crate::features::*;
 use crate::geometry::{extract_blocks, LandUsageGraph};
 use crate::partitioning::divide_town_into_blocks;
+use crate::plot::divide_city_block;
 use crate::road::roads_split;
 use crate::walled_town::*;
 
@@ -203,7 +204,36 @@ fn main() {
     }
     //district_image.save("D-01 districts.png").unwrap();
 
-    // TODO Algorithm for splitting the blocks into plots
+    // Split the city blocks
+    let mut plots = Vec::new();
+    for district in districts {
+        let mut district_plots = divide_city_block(&district, &land_usage_graph);
+        // TODO draw the plots or something...
+        println!("Found {} plots for a district.", district_plots.len());
+        plots.append(&mut district_plots);
+    }
+
+    let mut city_plan = features.coloured_map.clone();
+    for plot in plots {
+        plot.draw(&mut city_plan);
+        //draw_snake(&mut city_plan, &plot.polygon());
+    }
+    /*
+    for street in &streets {
+        pathfinding::draw_road_path(&mut city_plan, street);
+    }
+    */
+    for road in &country_roads {
+        pathfinding::draw_road_path(&mut city_plan, road);
+    }
+    /*
+    for road in &city_roads {
+        pathfinding::draw_road_path(&mut city_plan, road);
+    }
+    */
+    city_plan.save("city plan.png").unwrap();
+
+
     // TODO Algorithm for extracting (WorldExcerpt, 2D-description) from WorldExcerpt + plot
 
 

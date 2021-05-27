@@ -7,7 +7,8 @@ use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::f32::consts::PI;
 
-pub type RawEdge = (BlockColumnCoord, BlockColumnCoord);
+pub type RawEdge2d = (BlockColumnCoord, BlockColumnCoord);
+pub type RawEdge3d = (BlockCoord, BlockCoord);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LeftRightSide {
@@ -25,7 +26,7 @@ pub enum InOutSide {
 
 /// For a line through `line.0` and `line.1`, in that direction,
 /// which side is `point` on relative to the line?
-pub fn point_position_relative_to_line(point: BlockColumnCoord, line: RawEdge) -> LeftRightSide {
+pub fn point_position_relative_to_line(point: BlockColumnCoord, line: RawEdge2d) -> LeftRightSide {
     let double_area = (line.1 .0 - line.0 .0) * (point.1 - line.0 .1)
         - (point.0 - line.0 .0) * (line.1 .1 - line.0 .1);
 
@@ -91,7 +92,7 @@ struct VertexMeta {
 
 pub struct LandUsageGraph {
     edges: HashMap<BlockColumnCoord, Vec<BlockColumnCoord>>,
-    edge_meta: HashMap<RawEdge, EdgeMeta>,
+    edge_meta: HashMap<RawEdge2d, EdgeMeta>,
     vertex_meta: HashMap<BlockColumnCoord, VertexMeta>,
 }
 
@@ -135,10 +136,10 @@ impl LandUsageGraph {
                     };
                     edges.push(PlotEdge {
                         kind,
-                        points: vec![
+                        points: (
                             BlockCoord(edge[0].0, y0, edge[0].1),
                             BlockCoord(edge[1].0, y1, edge[1].1),
-                        ],
+                        ),
                     });
                 }
             }
@@ -209,7 +210,7 @@ impl LandUsageGraph {
     }
 
     /// Returns the "left-most" turn from b (not b itself), when coming from a.
-    fn get_left_turn(&self, (a, b): RawEdge) -> Option<BlockColumnCoord> {
+    fn get_left_turn(&self, (a, b): RawEdge2d) -> Option<BlockColumnCoord> {
         match self.edges.get(&b) {
             None => None,
             Some(next_vertices) => {
@@ -256,8 +257,8 @@ impl LandUsageGraph {
 
 /// Returns a set of polygons corresponding to the areas sectioned by the structures in `graph`.
 pub fn extract_blocks(graph: &LandUsageGraph) -> Vec<Vec<BlockColumnCoord>> {
-    let mut queue = VecDeque::<RawEdge>::new();
-    let mut visited = HashSet::<RawEdge>::new();
+    let mut queue = VecDeque::<RawEdge2d>::new();
+    let mut visited = HashSet::<RawEdge2d>::new();
     let mut areas = Vec::<Vec<BlockColumnCoord>>::new();
 
     // Populate queue
@@ -280,7 +281,7 @@ pub fn extract_blocks(graph: &LandUsageGraph) -> Vec<Vec<BlockColumnCoord>> {
         let first_edge = edge;
 
         let mut area = Vec::<BlockColumnCoord>::new();
-        let mut visited_in_area = HashSet::<RawEdge>::new();
+        let mut visited_in_area = HashSet::<RawEdge2d>::new();
 
         area.push(first_edge.0);
         area.push(first_edge.1);
@@ -332,7 +333,7 @@ pub fn extract_blocks(graph: &LandUsageGraph) -> Vec<Vec<BlockColumnCoord>> {
 /// intersection gets selected for that intersection point.
 pub fn add_intersection_points(roads: &mut Vec<RoadPath>, snake: &mut Snake) {
     // For storing intersections that should be added to the snake after roads are handled
-    let mut snake_extra_points = HashMap::<RawEdge, Vec<BlockColumnCoord>>::new();
+    let mut snake_extra_points = HashMap::<RawEdge2d, Vec<BlockColumnCoord>>::new();
 
     // First, handle the roads
     let mut new_roads = Vec::new();
@@ -407,13 +408,13 @@ pub fn add_intersection_points(roads: &mut Vec<RoadPath>, snake: &mut Snake) {
     *snake = new_snake;
 }
 
-enum IntersectionPoints {
+pub enum IntersectionPoints {
     None,
     One(BlockColumnCoord),
     Two(BlockColumnCoord, BlockColumnCoord),
 }
 
-fn intersection(edge_a: RawEdge, edge_b: RawEdge) -> IntersectionPoints {
+pub fn intersection(edge_a: RawEdge2d, edge_b: RawEdge2d) -> IntersectionPoints {
     let (BlockColumnCoord(a_x1, a_y1), BlockColumnCoord(a_x2, a_y2)) = edge_a;
     let (BlockColumnCoord(b_x1, b_y1), BlockColumnCoord(b_x2, b_y2)) = edge_b;
 
