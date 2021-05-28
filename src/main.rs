@@ -12,6 +12,7 @@ mod partitioning;
 mod pathfinding;
 mod plot;
 mod road;
+mod structure_builder;
 mod tree;
 mod types;
 mod wall;
@@ -215,7 +216,7 @@ fn main() {
     }
 
     let mut city_plan = features.coloured_map.clone();
-    for plot in plots {
+    for plot in &plots {
         plot.draw(&mut city_plan);
     }
     /*
@@ -232,9 +233,6 @@ fn main() {
     }
     */
     city_plan.save("city plan.png").unwrap();
-
-
-    // TODO Algorithm for extracting (WorldExcerpt, 2D-description) from WorldExcerpt + plot
 
 
     // Build structures
@@ -256,7 +254,37 @@ fn main() {
         road::build_road(&mut excerpt, &road, &features.terrain, 4);
     }
 
-    // TODO build some actual structures on the plots!
+    // Build some structures (houses?) on the plots.
+    for plot in &plots {
+        if let Some(bounding_box) = plot.bounding_box() {
+            // Increase the size by 1, in order to provide at least one block of context.
+            let mut bounding_box = (
+                bounding_box.0 - BlockCoord(1, 0, 1),
+                bounding_box.1 + BlockCoord(1, 0, 1),
+            );
+            bounding_box.0 .1 = 0;
+            bounding_box.1 .1 = y_len - 1;
+
+            // Get the relative plot description and relative world excerpt
+            let offset_plot = plot.offset(bounding_box.0);
+            let plot_excerpt = WorldExcerpt::from_world_excerpt(
+                (bounding_box.0 .0 as usize, bounding_box.0 .1 as usize, bounding_box.0 .2 as usize),
+                (bounding_box.1 .0 as usize, bounding_box.1 .1 as usize, bounding_box.1 .2 as usize),
+                &excerpt,
+            );
+
+            // Get the build area description structure for the (now offset) plot
+            let plot_build_area =
+                build_area::BuildArea::from_world_excerpt_and_plot(&plot_excerpt, &offset_plot);
+
+            // Generate a structure on the plot
+            let new_plot = structure_builder::build_rock(&plot_excerpt, &plot_build_area);
+            // TODO "clean up" new_plot before actually saving it into excerpt?
+
+            // Paste it back into the "main" excerpt
+            excerpt.paste(bounding_box.0, &new_plot)
+        }
+    }
 
     // TODO
     // - If player location is inside town, not on road, then make square plot there

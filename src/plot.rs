@@ -40,6 +40,49 @@ impl Plot {
         polygon
     }
 
+    pub fn bounding_box(&self) -> Option<(BlockCoord, BlockCoord)> {
+        if self.edges.is_empty() {
+            return None;
+        }
+
+        let mut min = self.edges[0].points.0;
+        let mut max = self.edges[0].points.0;
+
+        for edge in &self.edges {
+            let end_point = edge.points.1;
+            min = BlockCoord(
+                i64::min(end_point.0, min.0),
+                i64::min(end_point.1, min.1),
+                i64::min(end_point.2, min.2),
+            );
+            max = BlockCoord(
+                i64::max(end_point.0, min.0),
+                i64::max(end_point.1, min.1),
+                i64::max(end_point.2, min.2),
+            );
+        }
+
+        Some((min, max))
+    }
+
+    pub fn offset(&self, offset: BlockCoord) -> Self {
+        let mut edges = Vec::new();
+
+        for edge in &self.edges {
+            edges.push(
+                PlotEdge {
+                    kind: edge.kind,
+                    points: (
+                        edge.points.0 - offset,
+                        edge.points.1 - offset,
+                    ),
+                }
+            );
+        }
+
+        Self { edges }
+    }
+
     pub fn point_slice(&self) -> Vec<imageproc::point::Point<i64>> {
         let point_vec: Vec<imageproc::point::Point<i64>> = self
             .polygon()
