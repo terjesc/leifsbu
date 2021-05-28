@@ -19,9 +19,11 @@ pub fn _prune(_excerpt: &mut WorldExcerpt, _at: BlockCoord) {
 pub fn chop(excerpt: &mut WorldExcerpt, at: BlockCoord) {
     let to_chop = find_tree(excerpt, &at);
 
+    /*
     if to_chop.len() > 0 {
         println!("Found a tree, need to remove {} blocks!", to_chop.len());
     }
+    */
 
     for coordinates in to_chop {
         excerpt.set_block_at(coordinates, Block::Air);

@@ -216,7 +216,6 @@ fn main() {
     let mut city_plan = features.coloured_map.clone();
     for plot in plots {
         plot.draw(&mut city_plan);
-        //draw_snake(&mut city_plan, &plot.polygon());
     }
     /*
     for street in &streets {

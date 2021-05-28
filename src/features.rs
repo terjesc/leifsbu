@@ -89,7 +89,7 @@ impl Features {
                 let y = terrain_height_map.height_at((x, z)).unwrap_or(0) as i64;
                 let pixel = match excerpt.block_at((x as i64, y as i64, z as i64).into()) {
                     Some(Block::WaterSource) => image::Rgb([0u8, 0u8, 255u8]),
-                    _ => image::Rgb([0u8, y as u8 * 4, 0u8]),
+                    _ => image::Rgb([0u8, (y as u8).saturating_sub(60) * 3, 0u8]),
                 };
                 colour_img.put_pixel(x as u32, z as u32, pixel);
             }

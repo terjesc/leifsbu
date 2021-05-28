@@ -234,7 +234,7 @@ impl Plot {
     pub fn draw(&self, image: &mut image::RgbImage) {
         for edge in &self.edges {
             let colour = match edge.kind {
-                PlotEdgeKind::Road { .. } => image::Rgb([127u8, 0u8, 0u8]),
+                PlotEdgeKind::Road { .. } => image::Rgb([191u8, 63u8, 63u8]),
                 PlotEdgeKind::Wall { .. } => image::Rgb([63u8, 63u8, 63u8]),
                 PlotEdgeKind::Plot => image::Rgb([127u8, 255u8, 127u8]),
                 PlotEdgeKind::Terrain => image::Rgb([0u8, 127u8, 127u8]),
