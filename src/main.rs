@@ -4,6 +4,7 @@ extern crate clap;
 extern crate mcprogedit;
 
 mod areas;
+mod build_area;
 mod features;
 mod geometry;
 mod line;
