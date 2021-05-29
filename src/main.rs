@@ -21,6 +21,7 @@ mod walled_town;
 use std::path::Path;
 
 use imageproc::stats::histogram;
+use mcprogedit::block::Block;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
@@ -62,7 +63,7 @@ fn main() {
 
     // Initial information extraction
     // ******************************
-    let _player_location: BlockColumnCoord = (x_len / 2, z_len / 2).into();
+    let player_location: BlockColumnCoord = (x_len / 2, z_len / 2).into();
 
     // Extract features
     let features = Features::new_from_world_excerpt(&excerpt);
@@ -88,17 +89,6 @@ fn main() {
     // Find town location
     let (town_circumference, town_center) = walled_town_contour(&features, &areas);
 
-    // Create some paths... (NB Only for generating a cool image. Not built in world.)
-    let start = town_center;
-    let mut path_image = features.coloured_map.clone();
-
-    for goal in &town_circumference {
-        if let Some(path) = pathfinding::path(start, *goal, &features.terrain) {
-            draw_snake(&mut path_image, &path);
-        }
-    }
-    path_image.save("path_001.png").unwrap();
-
     // Get full wall circle, by copying the first node of the wall to the end.
     let mut wall_circle = town_circumference.clone();
     wall_circle.push(town_circumference[0]);
@@ -111,10 +101,14 @@ fn main() {
     // TODO refactor: Move the path generation somewhere else?
     // TODO to be replaced by other means of finding road start locations
     let start_coordinates: Vec<_> = vec![
+        // Paths from the four corners of the map
         (0, 0),
         (0, z_len - 1),
         (x_len - 1, z_len - 1),
         (x_len - 1, 0),
+        // Path from the player start location
+        // TODO check if inside or outside town; if inside town, put a town square there instead.
+        (player_location.0, player_location.1),
     ]
     .iter()
     .map(|(x, z)| {
@@ -170,9 +164,10 @@ fn main() {
     geometry::add_intersection_points(&mut streets, &mut wall_circle);
     geometry::add_intersection_points(&mut city_roads, &mut wall_circle);
 
+    // TODO decide width of streets/roads/walls based on total town area?
     let mut land_usage_graph = LandUsageGraph::new();
-    land_usage_graph.add_roads(&streets, geometry::EdgeKind::Street, 3);
-    land_usage_graph.add_roads(&city_roads, geometry::EdgeKind::Road, 5);
+    land_usage_graph.add_roads(&streets, geometry::EdgeKind::Street, 2);
+    land_usage_graph.add_roads(&city_roads, geometry::EdgeKind::Road, 6);
     land_usage_graph.add_circumference(&wall_circle, geometry::EdgeKind::Wall, 3);
 
     // Get the polygons for each "city block"
@@ -242,6 +237,7 @@ fn main() {
     wall::build_wall(&mut excerpt, &wall_circle, &features);
 
     // Build the various roads and streets...
+    // TODO Change road width depending on total town area?
     for street in streets {
         road::build_road(&mut excerpt, &street, &features.terrain, 2);
     }
@@ -281,7 +277,22 @@ fn main() {
             if let Some(new_plot) =
                 structure_builder::build_house(&plot_excerpt, &plot_build_area)
             {
-                // TODO "clean up" new_plot before actually saving it into excerpt?
+                // TODO Enforce plot_build_area before pasting the new plot into the world?
+
+                // If there are trees that will be affected by pasting the new plot, chop them.
+                let (new_x_len, new_y_len, new_z_len) = new_plot.dim();
+                for x in 0..new_x_len as i64 {
+                    for y in 0..new_y_len as i64 {
+                        for z in 0..new_z_len as i64 {
+                            if let Some(Block::None) =  new_plot.block_at(BlockCoord(x, y, z)) {
+                                // Nothing will be pasted, so nothing to do.
+                            } else {
+                                // Some block will be pasted, chop any affected tree.
+                                tree::chop(&mut excerpt, BlockCoord(x, y, z) + bounding_box.0);
+                            }
+                        }
+                    }
+                }
 
                 // Paste it back into the "main" excerpt
                 excerpt.paste(bounding_box.0, &new_plot)
@@ -290,11 +301,6 @@ fn main() {
     }
 
     wall::build_wall_crowning(&mut excerpt, &wall_circle, &features);
-
-    // TODO
-    // - If player location is inside town, not on road, then make square plot there
-    // - If player location is outside town, make road from there to nearest major road,
-    //   and put signs towards town. Bridges, boat trips, etc. may be needed...
 
     /*
     println!("Testing rainbow trees!");

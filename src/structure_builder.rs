@@ -38,6 +38,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     const FLOOR_BLOCK: Block = Block::dark_oak_planks();
     const WALL_BLOCK: Block = Block::oak_planks();
     const ROOF_BLOCK: Block = Block::BrickBlock;
+    const FLAT_WINDOW_BLOCK: Block = Block::glass_pane();
 
     const WALL_HEIGHT: usize = 3;
 
@@ -49,7 +50,23 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     let not_buildable = build_area.not_buildable_coordinates();
 
     // Get height map for the area
-    let height_map = excerpt.height_map();
+    let mut height_map = excerpt.height_map();
+
+    // Update the height map not to include foilage.
+    for x in 0..x_len as usize {
+        for z in 0..z_len as usize {
+            let y = height_map.height_at((x, z)).unwrap_or(y_len as u32);
+
+            for y in (0..y).rev() {
+                if let Some(block) = excerpt.block_at((x as i64, y as i64, z as i64).into()) {
+                    if !block.is_foilage() {
+                        height_map.set_height((x, z), y as u32 + 1);
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
     // Find the circumferal blocks (that are still inside the build area)
     let buildable_edge = build_area.buildable_edge_coordinates();
@@ -73,8 +90,20 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     }
     let road_y_average: usize = road_y_values.iter().sum::<usize>() / road_y_values.len();
 
-    // TODO If there is lava close to (wooden) house placement, abort (return None.)
-    // ALTERNATIVELY just replace lava with obsidian
+    // In order to avoid surprises, replace lava at dangerous locations with obsidian..
+    for x in 0..x_len {
+        for y in road_y_average - 10..y_len {
+            for z in 0..z_len {
+                let coordinates = BlockCoord(x as i64, y as i64, z as i64);
+                if let Some(Block::LavaSource) = excerpt.block_at(coordinates) {
+                    output.set_block_at(coordinates, Block::Obsidian);
+                }
+                if let Some(Block::Lava { .. }) = excerpt.block_at(coordinates) {
+                    output.set_block_at(coordinates, Block::Obsidian);
+                }
+            }
+        }
+    }
 
     // Build foundations on plot up to average road height
     for (x, z) in &buildable_edge {
@@ -257,6 +286,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         }
     }
     if !door_placed {
+        // TODO Try a different strategy before giving up.
         println!("Unable to find a suitable location for the door!");
         return None;
     }
@@ -264,7 +294,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     // Put roof on top
     let mut available_to_roof: HashSet<(usize, usize)> = buildable.into_iter().collect();
     let mut unavailable_to_roof: HashSet<(usize, usize)> = not_buildable.into_iter().collect();
-    let mut y = road_y_average as i64 + 4;
+    let mut y = road_y_average as i64 + WALL_HEIGHT as i64 + 1;
 
     while !available_to_roof.is_empty() {
         // Find everything in available_to_roof that is neighbour to unavailable_to_roof
