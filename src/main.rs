@@ -173,7 +173,7 @@ fn main() {
     let mut land_usage_graph = LandUsageGraph::new();
     land_usage_graph.add_roads(&streets, geometry::EdgeKind::Street, 2);
     land_usage_graph.add_roads(&city_roads, geometry::EdgeKind::Road, 4);
-    land_usage_graph.add_circumference(&wall_circle, geometry::EdgeKind::Wall, 3);
+    land_usage_graph.add_circumference(&wall_circle, geometry::EdgeKind::Wall, 5);
 
     // Get the polygons for each "city block"
     let districts = extract_blocks(&land_usage_graph);

@@ -196,7 +196,7 @@ impl LandUsageGraph {
     }
 
     /// Return a list of the edges in this graph structure.
-    // TODO change to returning an iterator instead
+    // NB Could change to returning an iterator instead?
     pub fn edges(&self) -> Vec<(BlockColumnCoord, BlockColumnCoord)> {
         let mut edges = Vec::new();
 

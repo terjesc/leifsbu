@@ -31,10 +31,22 @@ impl Plot {
 
         if let Some(edge) = self.edges.first() {
             polygon.push(BlockColumnCoord::from(edge.points.0));
+        } else {
+            println!("[warning] Plot has no edges.");
         }
 
         for edge in &self.edges {
+            if polygon.last() != Some(&BlockColumnCoord::from(edge.points.0)) {
+                println!("[warning] Missing edge along plot circumference.");
+                polygon.push(BlockColumnCoord::from(edge.points.0));
+            }
             polygon.push(BlockColumnCoord::from(edge.points.1));
+        }
+
+        // Ensure that the polygon is a full circle
+        if polygon.first() != polygon.last() {
+            println!("[warning] Missing edge at end of plot circumference.");
+            polygon.push(*polygon.first().unwrap());
         }
 
         polygon
@@ -56,9 +68,9 @@ impl Plot {
                 i64::min(end_point.2, min.2),
             );
             max = BlockCoord(
-                i64::max(end_point.0, min.0),
-                i64::max(end_point.1, min.1),
-                i64::max(end_point.2, min.2),
+                i64::max(end_point.0, max.0),
+                i64::max(end_point.1, max.1),
+                i64::max(end_point.2, max.2),
             );
         }
 
@@ -113,7 +125,10 @@ impl Plot {
             // NB picking Left if exactly on the split line, but this is probably
             //    too naïve and going backwards through the edges until we reach
             //    an actual side (and use that one) is probably better.
-            geometry::LeftRightSide::On => geometry::LeftRightSide::Left,
+            geometry::LeftRightSide::On => {
+                println!("[warning] Picking Left although Right may be better in this instance.");
+                geometry::LeftRightSide::Left
+            }
             side => side,
         };
 
