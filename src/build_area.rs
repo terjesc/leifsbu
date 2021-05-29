@@ -3,6 +3,7 @@ use crate::line;
 use crate::plot::{Plot, PlotEdgeKind};
 use mcprogedit::coordinates::BlockColumnCoord;
 use mcprogedit::world_excerpt::WorldExcerpt;
+use std::cmp::min;
 
 /// What land use a block (or a column of blocks) is intended for.
 #[derive(Clone, Copy, Debug)]
@@ -15,6 +16,34 @@ pub enum AreaDesignation {
 }
 
 impl AreaDesignation {
+    pub fn is_irrelevant(&self) -> bool {
+        match self {
+            AreaDesignation::Irrelevant(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_plot(&self) -> bool {
+        match self {
+            AreaDesignation::Plot(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_road(&self) -> bool {
+        match self {
+            AreaDesignation::Road(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_wall(&self) -> bool {
+        match self {
+            AreaDesignation::Wall(_) => true,
+            _ => false,
+        }
+    }
+
     /// True if all blocks covered by this designation can be modified.
     pub fn is_buildable(&self) -> bool {
         match self {
@@ -102,14 +131,14 @@ impl BuildArea {
         // Fill the inside of the plot as buildable plot.
         for x in 0..x_len {
             for z in 0..z_len {
-                if geometry::InOutSide::Inside == geometry::point_position_relative_to_polygon(
-                    BlockColumnCoord(x as i64, z as i64),
-                    &plot_polygon,
-                ) {
-                    build_area.set_designation_at(
-                        (x, z),
-                        AreaDesignation::Plot(BuildRights::Buildable),
-                    );
+                if geometry::InOutSide::Inside
+                    == geometry::point_position_relative_to_polygon(
+                        BlockColumnCoord(x as i64, z as i64),
+                        &plot_polygon,
+                    )
+                {
+                    build_area
+                        .set_designation_at((x, z), AreaDesignation::Plot(BuildRights::Buildable));
                 }
             }
         }
@@ -176,7 +205,11 @@ impl BuildArea {
     }
 
     /// Set the designation at the (x, z) location `coordinates` to the given designation.
-    pub fn set_designation_at(&mut self, coordinates: (usize, usize), designation: AreaDesignation) {
+    pub fn set_designation_at(
+        &mut self,
+        coordinates: (usize, usize),
+        designation: AreaDesignation,
+    ) {
         if let Some(index) = self.index(coordinates) {
             self.designations[index] = designation;
         }
@@ -189,6 +222,131 @@ impl BuildArea {
         } else {
             None
         }
+    }
+
+    /// Returns all locations that are buildable.
+    pub fn buildable_coordinates(&self) -> Vec<(usize, usize)> {
+        let mut buildable = Vec::new();
+
+        for x in 0..self.x_dim {
+            for z in 0..self.z_dim {
+                if let Some(designation) = self.designation_at((x, z)) {
+                    if designation.is_buildable() {
+                        buildable.push((x, z));
+                    }
+                }
+            }
+        }
+
+        buildable
+    }
+
+    /// Returns all locations that are not buildable. (Returns also air-buildable locations.)
+    pub fn not_buildable_coordinates(&self) -> Vec<(usize, usize)> {
+        let mut not_buildable = Vec::new();
+
+        for x in 0..self.x_dim {
+            for z in 0..self.z_dim {
+                if let Some(designation) = self.designation_at((x, z)) {
+                    if !designation.is_buildable() {
+                        not_buildable.push((x, z));
+                    }
+                }
+            }
+        }
+
+        not_buildable
+    }
+
+    /// Checks if a location is buildable, and next to at least one non-buildable location.
+    pub fn is_buildable_edge_at(&self, coordinates: (usize, usize)) -> bool {
+        // In order to be at the edge of what is buildable,
+        // the position itself must exist and be buildable…
+        if let Some(designation) = self.designation_at(coordinates) {
+            if designation.is_buildable() {
+                // …and among the neighbours…
+                let neighbours = self.neighbourhood_8(coordinates);
+                for neighbour in neighbours {
+                    if let Some(designation) = self.designation_at(neighbour) {
+                        // …at least one neighbour must not be buildable.
+                        if !designation.is_buildable() {
+                            return true;
+                        }
+                    } else {
+                        // Also, if the neighbour position is outside of the area,
+                        // that position is not buildable.
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Returns all locations that are buildable and next to at least one not buildable location.
+    pub fn buildable_edge_coordinates(&self) -> Vec<(usize, usize)> {
+        let mut buildable_edge = Vec::new();
+
+        for x in 0..self.x_dim {
+            for z in 0..self.z_dim {
+                if self.is_buildable_edge_at((x, z)) {
+                    buildable_edge.push((x, z));
+                }
+            }
+        }
+
+        buildable_edge
+    }
+
+    /// Checks if a location is a road, and next to at least one buildable location.
+    pub fn is_road_along_buildable(&self, coordinates: (usize, usize)) -> bool {
+        // The position itself must exist and be a road…
+        if let Some(designation) = self.designation_at(coordinates) {
+            if designation.is_road() {
+                // …and among the neighbours…
+                let neighbours = self.neighbourhood_8(coordinates);
+                for neighbour in neighbours {
+                    if let Some(designation) = self.designation_at(neighbour) {
+                        // …at least one neighbour must be buildable.
+                        if designation.is_buildable() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Returns all locations that are road and next to at least one buildable location.
+    pub fn road_along_buildable_coordinates(&self) -> Vec<(usize, usize)> {
+        let mut road_along_buildable = Vec::new();
+
+        for x in 0..self.x_dim {
+            for z in 0..self.z_dim {
+                if self.is_road_along_buildable((x, z)) {
+                    road_along_buildable.push((x, z));
+                }
+            }
+        }
+
+        road_along_buildable
+    }
+
+    fn neighbourhood_8(&self, coordinates: (usize, usize)) -> Vec<(usize, usize)> {
+        let mut neighbours = Vec::with_capacity(8);
+
+        for x in coordinates.0.saturating_sub(1)..=min(coordinates.0 + 1, self.x_dim - 1) {
+            for y in coordinates.1.saturating_sub(1)..=min(coordinates.1 + 1, self.z_dim - 1) {
+                if (x, y) != coordinates {
+                    neighbours.push((x, y));
+                }
+            }
+        }
+
+        neighbours
     }
 
     fn index(&self, (x, z): (usize, usize)) -> Option<usize> {

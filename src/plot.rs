@@ -4,7 +4,7 @@ use imageproc::drawing::draw_line_segment_mut;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 
 const PLOT_AREA_MIN: i64 = 40;
-const PLOT_AREA_MAX: i64 = 200;
+const PLOT_AREA_MAX: i64 = 150;
 
 #[derive(Clone, Debug)]
 pub struct Plot {
@@ -81,15 +81,10 @@ impl Plot {
         let mut edges = Vec::new();
 
         for edge in &self.edges {
-            edges.push(
-                PlotEdge {
-                    kind: edge.kind,
-                    points: (
-                        edge.points.0 - offset,
-                        edge.points.1 - offset,
-                    ),
-                }
-            );
+            edges.push(PlotEdge {
+                kind: edge.kind,
+                points: (edge.points.0 - offset, edge.points.1 - offset),
+            });
         }
 
         Self { edges }

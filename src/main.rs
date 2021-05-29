@@ -171,9 +171,9 @@ fn main() {
     geometry::add_intersection_points(&mut city_roads, &mut wall_circle);
 
     let mut land_usage_graph = LandUsageGraph::new();
-    land_usage_graph.add_roads(&streets, geometry::EdgeKind::Street, 2);
-    land_usage_graph.add_roads(&city_roads, geometry::EdgeKind::Road, 4);
-    land_usage_graph.add_circumference(&wall_circle, geometry::EdgeKind::Wall, 5);
+    land_usage_graph.add_roads(&streets, geometry::EdgeKind::Street, 3);
+    land_usage_graph.add_roads(&city_roads, geometry::EdgeKind::Road, 5);
+    land_usage_graph.add_circumference(&wall_circle, geometry::EdgeKind::Wall, 3);
 
     // Get the polygons for each "city block"
     let districts = extract_blocks(&land_usage_graph);
@@ -278,13 +278,18 @@ fn main() {
                 build_area::BuildArea::from_world_excerpt_and_plot(&plot_excerpt, &offset_plot);
 
             // Generate a structure on the plot
-            let new_plot = structure_builder::build_rock(&plot_excerpt, &plot_build_area);
-            // TODO "clean up" new_plot before actually saving it into excerpt?
+            if let Some(new_plot) =
+                structure_builder::build_house(&plot_excerpt, &plot_build_area)
+            {
+                // TODO "clean up" new_plot before actually saving it into excerpt?
 
-            // Paste it back into the "main" excerpt
-            excerpt.paste(bounding_box.0, &new_plot)
+                // Paste it back into the "main" excerpt
+                excerpt.paste(bounding_box.0, &new_plot)
+            }
         }
     }
+
+    wall::build_wall_crowning(&mut excerpt, &wall_circle, &features);
 
     // TODO
     // - If player location is inside town, not on road, then make square plot there
