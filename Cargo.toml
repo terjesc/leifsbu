@@ -1,5 +1,5 @@
 [package]
-name = "leifsbudir"
+name = "leifsbu"
 version = "0.1.0"
 authors = ["Terje Schjelderup <terjesc@pvv.org>"]
 edition = "2018"

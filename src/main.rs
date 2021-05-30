@@ -324,7 +324,7 @@ fn parse_i64_or_exit(string: &str) -> i64 {
 }
 
 fn matches() -> clap::ArgMatches<'static> {
-    clap::App::new("casg - Cellular Automata Settlement Generator.")
+    clap::App::new("leifsbu - A Minecraft settlement generator.")
         .set_term_width(80)
         .version(clap::crate_version!())
         .arg(
