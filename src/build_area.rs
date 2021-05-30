@@ -4,6 +4,7 @@ use crate::plot::{Plot, PlotEdgeKind};
 use mcprogedit::coordinates::BlockColumnCoord;
 use mcprogedit::world_excerpt::WorldExcerpt;
 use std::cmp::min;
+use std::collections::HashSet;
 
 /// What land use a block (or a column of blocks) is intended for.
 #[derive(Clone, Copy, Debug)]
@@ -225,14 +226,14 @@ impl BuildArea {
     }
 
     /// Returns all locations that are buildable.
-    pub fn buildable_coordinates(&self) -> Vec<(usize, usize)> {
-        let mut buildable = Vec::new();
+    pub fn buildable_coordinates(&self) -> HashSet<(usize, usize)> {
+        let mut buildable = HashSet::new();
 
         for x in 0..self.x_dim {
             for z in 0..self.z_dim {
                 if let Some(designation) = self.designation_at((x, z)) {
                     if designation.is_buildable() {
-                        buildable.push((x, z));
+                        buildable.insert((x, z));
                     }
                 }
             }
@@ -242,14 +243,14 @@ impl BuildArea {
     }
 
     /// Returns all locations that are not buildable. (Returns also air-buildable locations.)
-    pub fn not_buildable_coordinates(&self) -> Vec<(usize, usize)> {
-        let mut not_buildable = Vec::new();
+    pub fn not_buildable_coordinates(&self) -> HashSet<(usize, usize)> {
+        let mut not_buildable = HashSet::new();
 
         for x in 0..self.x_dim {
             for z in 0..self.z_dim {
                 if let Some(designation) = self.designation_at((x, z)) {
                     if !designation.is_buildable() {
-                        not_buildable.push((x, z));
+                        not_buildable.insert((x, z));
                     }
                 }
             }
@@ -285,13 +286,13 @@ impl BuildArea {
     }
 
     /// Returns all locations that are buildable and next to at least one not buildable location.
-    pub fn buildable_edge_coordinates(&self) -> Vec<(usize, usize)> {
-        let mut buildable_edge = Vec::new();
+    pub fn buildable_edge_coordinates(&self) -> HashSet<(usize, usize)> {
+        let mut buildable_edge = HashSet::new();
 
         for x in 0..self.x_dim {
             for z in 0..self.z_dim {
                 if self.is_buildable_edge_at((x, z)) {
-                    buildable_edge.push((x, z));
+                    buildable_edge.insert((x, z));
                 }
             }
         }
@@ -321,13 +322,13 @@ impl BuildArea {
     }
 
     /// Returns all locations that are road and next to at least one buildable location.
-    pub fn road_along_buildable_coordinates(&self) -> Vec<(usize, usize)> {
-        let mut road_along_buildable = Vec::new();
+    pub fn road_along_buildable_coordinates(&self) -> HashSet<(usize, usize)> {
+        let mut road_along_buildable = HashSet::new();
 
         for x in 0..self.x_dim {
             for z in 0..self.z_dim {
                 if self.is_road_along_buildable((x, z)) {
-                    road_along_buildable.push((x, z));
+                    road_along_buildable.insert((x, z));
                 }
             }
         }

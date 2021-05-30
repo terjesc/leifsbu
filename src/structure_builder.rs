@@ -46,13 +46,20 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     let (x_len, y_len, z_len) = excerpt.dim();
     let mut output = WorldExcerpt::new(x_len, y_len, z_len);
 
-    let buildable = build_area.buildable_coordinates();
-    let not_buildable = build_area.not_buildable_coordinates();
+    // Find the coordinates inside and outside of the plot itself
+    let mut buildable = build_area.buildable_coordinates();
+    let mut not_buildable = build_area.not_buildable_coordinates();
+
+    // Find the circumferal blocks (that are still inside the build area)
+    let mut buildable_edge = build_area.buildable_edge_coordinates();
+
+    // Find the road blocks bordering the buildable area
+    let mut road_along_buildable = build_area.road_along_buildable_coordinates();
 
     // Get height map for the area
     let mut height_map = excerpt.height_map();
 
-    // Update the height map not to include foilage.
+    // Update the height map to not include foilage.
     for x in 0..x_len as usize {
         for z in 0..z_len as usize {
             let y = height_map.height_at((x, z)).unwrap_or(y_len as u32);
@@ -68,17 +75,42 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         }
     }
 
-    // Find the circumferal blocks (that are still inside the build area)
-    let buildable_edge = build_area.buildable_edge_coordinates();
+    // "Clean up" the build area a bit, by removing weird outliers.
+    let mut changes = 1;
+    while changes > 0 {
+        changes = 0;
+        let mut to_remove = Vec::new();
 
-    // TODO Convert from buildable_edge to a nicer circumference,
-    //      by removing weird outliers.
-    // TODO Then also make sure to update the interior area.
-    // TODO And also make sure to handle roads correctly (as the area percieved
-    //      as road may now be larger than before)
+        for coordinates in &buildable_edge {
+            let mut outside_neighbours = 0;
+            let mut road_accessible_neighbours = 0;
+            for x in coordinates.0 - 1..=coordinates.0 + 1 {
+                for z in coordinates.1 - 1..=coordinates.1 + 1 {
+                    if not_buildable.contains(&(x, z)) {
+                        outside_neighbours += 1;
+                    }
+                    if road_along_buildable.contains(&(x, z)) {
+                        road_accessible_neighbours += 1;
+                    }
+                }
+            }
+            if outside_neighbours > 5 {
+                changes += 1;
+                buildable.remove(coordinates);
+                to_remove.push(*coordinates);
+                not_buildable.insert(*coordinates);
+                if road_accessible_neighbours > 0 {
+                    road_along_buildable.insert(*coordinates);
+                }
+            }
+        }
 
-    // Find average road y along plot
-    let road_along_buildable = build_area.road_along_buildable_coordinates();
+        for coordinates in to_remove {
+            buildable_edge.remove(&coordinates);
+        }
+    }
+
+    // Find average road side y along plot
     let road_y_values: Vec<usize> = road_along_buildable
         .iter()
         .filter_map(|(x, z)| height_map.height_at((*x, *z)))
@@ -150,6 +182,8 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     // TODO Put down door only if higher than road.
     // TODO Pick a more "central" location for the door, along the wall.
     let mut door_placed = false;
+    let mut door_location = None;
+
     for (x, z) in &buildable_edge {
         let north_coordinates = (*x, *z - 1);
         let west_coordinates = (*x - 1, *z);
@@ -186,6 +220,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
                     }),
                 );
                 door_placed = true;
+                door_location = Some((*x, *z));
                 break;
             }
 
@@ -216,6 +251,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
                     }),
                 );
                 door_placed = true;
+                door_location = Some((*x, *z));
                 break;
             }
         }
@@ -251,6 +287,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
                     }),
                 );
                 door_placed = true;
+                door_location = Some((*x, *z));
                 break;
             }
 
@@ -281,6 +318,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
                     }),
                 );
                 door_placed = true;
+                door_location = Some((*x, *z));
                 break;
             }
         }
@@ -291,9 +329,29 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         return None;
     }
 
+    // TODO Put windows in
+    // Window is OK if in wall, and in two opposite cardinal directions there is Air (or None),
+    // and in the two remaining cardinal directions there is Wall (or Window).
+
+    // NB at this stage, it should have reached a minimal viable state
+
+    // TODO Put torch by door, and/or other places along outer walls
+
+    // NB at this stage, it should almost be "OK"
+
+    // TODO Put detailing outside:
+    //      Torches. Flowers. Flower beds. Vines. Flower pots. Along outer wall.
+
+    // NB at this stage, it should start to look "decent"
+
+    // TODO Put furniture inside:
+    //      Bed. Workbench. Furnace. Torches. Flower pots. Chest? Chairs? Tables? Pictures?
+
+    // NB at this stage, it should be fairly OK to ship (BTW, did you handle the lava?)
+
     // Put roof on top
-    let mut available_to_roof: HashSet<(usize, usize)> = buildable.into_iter().collect();
-    let mut unavailable_to_roof: HashSet<(usize, usize)> = not_buildable.into_iter().collect();
+    let mut available_to_roof = buildable.clone();
+    let mut unavailable_to_roof = not_buildable.clone();
     let mut y = road_y_average as i64 + WALL_HEIGHT as i64 + 1;
 
     while !available_to_roof.is_empty() {
@@ -319,26 +377,6 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         // Increase y for next iteration
         y += 1;
     }
-
-    // TODO Put windows in
-    // Window is OK if in wall, and in two opposite cardinal directions there is Air (or None),
-    // and in the two remaining cardinal directions there is Wall (or Window).
-
-    // NB at this stage, it should have reached a minimal viable state
-
-    // TODO Put torch by door, and/or other places along outer walls
-
-    // NB at this stage, it should almost be "OK"
-
-    // TODO Put detailing outside:
-    //      Torches. Flowers. Flower beds. Vines. Flower pots. Along outer wall.
-
-    // NB at this stage, it should start to look "decent"
-
-    // TODO Put furniture inside:
-    //      Bed. Workbench. Furnace. Torches. Flower pots. Chest? Chairs? Tables? Pictures?
-
-    // NB at this stage, it should be fairly OK to ship (BTW, did you handle the lava?)
 
     // Return our additions to the world
     Some(output)
