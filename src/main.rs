@@ -251,7 +251,12 @@ fn main() {
     }
 
     // Build some structures (houses?) on the plots.
-    for plot in &plots {
+    for (index, plot) in plots.iter().enumerate() {
+        // Skip every Nth plot
+        if index % 10 == 9 {
+            continue;
+        }
+
         if let Some(bounding_box) = plot.bounding_box() {
             // Increase the size by 1, in order to provide at least one block of context.
             let mut bounding_box = (

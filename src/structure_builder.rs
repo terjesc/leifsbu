@@ -2,6 +2,7 @@ use crate::build_area::BuildArea;
 use mcprogedit;
 use mcprogedit::block::Block;
 use mcprogedit::coordinates::BlockCoord;
+use mcprogedit::positioning::Surface5;
 use mcprogedit::world_excerpt::WorldExcerpt;
 use std::collections::HashSet;
 
@@ -176,11 +177,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     }
 
     // Put door in wall along plot edge facing road (mind also y positions)
-    // TODO Put in a little more effort, in order to place doors on
-    //      diagonals as well, if straight edges cannot be found.
     // TODO Put some stairs down outside door, if needed.
-    // TODO Put down door only if higher than road.
-    // TODO Pick a more "central" location for the door, along the wall.
     let mut door_placed = false;
     let mut door_location = None;
 
@@ -329,25 +326,129 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         return None;
     }
 
-    // TODO Put windows in
-    // Window is OK if in wall, and in two opposite cardinal directions there is Air (or None),
-    // and in the two remaining cardinal directions there is Wall (or Window).
+    // Find some window locations where we know the wall is not blocked (i.e. along roads.)
+    let mut window_locations = Vec::new();
+    for (x, z) in &buildable_edge {
+        // We cannot put windows where we already put a door.
+        if door_location == Some((*x, *z)) {
+            continue;
+        }
 
-    // NB at this stage, it should have reached a minimal viable state
+        // We need a wall block on either side, then outside on one side and inside on another,
+        // and not door adjacent to the window location.
+        if buildable_edge.contains(&(*x - 1, *z))
+        && door_location != Some((*x - 1, *z))
+        && buildable_edge.contains(&(*x + 1, *z))
+        && door_location != Some((*x + 1, *z))
+        && !buildable_edge.contains(&(*x, *z - 1))
+        && !buildable_edge.contains(&(*x, *z + 1))
+        {
+            if buildable.contains(&(*x, *z - 1))
+            && road_along_buildable.contains(&(*x, *z + 1))
+            || buildable.contains(&(*x, *z + 1))
+            && road_along_buildable.contains(&(*x, *z - 1))
+            {
+                window_locations.push((*x, *z));
+            }
+        }
 
-    // TODO Put torch by door, and/or other places along outer walls
+        // Same as above, but in the other orientation.
+        if buildable_edge.contains(&(*x, *z - 1))
+        && door_location != Some((*x, *z - 1))
+        && buildable_edge.contains(&(*x, *z + 1))
+        && door_location != Some((*x, *z + 1))
+        && !buildable_edge.contains(&(*x - 1, *z))
+        && !buildable_edge.contains(&(*x + 1, *z))
+        {
+            if buildable.contains(&(*x - 1, *z))
+            && road_along_buildable.contains(&(*x + 1, *z))
+            || buildable.contains(&(*x + 1, *z))
+            && road_along_buildable.contains(&(*x - 1, *z))
+            {
+                window_locations.push((*x, *z));
+            }
+        }
+    }
 
-    // NB at this stage, it should almost be "OK"
+    // Build windows at (at least some) of the locations found
+    for (x, z) in &window_locations {
+        output.set_block_at(
+            BlockCoord(*x as i64, road_y_average as i64 + 2, *z as i64),
+            FLAT_WINDOW_BLOCK,
+        );
+    }
+
+    // Put down some torches
+    for (index, (x, z)) in buildable_edge.iter().enumerate() {
+        let y = if door_location == Some((*x, *z)) || window_locations.contains(&(*x, *z)) {
+            // Do not place torch attached to the door, put it above the door instead.
+            // Same strategy used for windows.
+            road_y_average as i64 + 3
+        } else {
+            road_y_average as i64 + 2
+        };
+
+        let west = (*x + 1, *z);
+        let east = (*x - 1, *z);
+        let north = (*x, *z + 1);
+        let south = (*x, *z - 1);
+
+        // Build torch outside?
+        if index % 6 == 0 || door_location == Some((*x, *z)) {
+            if road_along_buildable.contains(&west) {
+                output.set_block_at(
+                    BlockCoord(west.0 as i64, y, west.1 as i64),
+                    Block::Torch { attached: Surface5::West },
+                );
+            } else if road_along_buildable.contains(&east) {
+                output.set_block_at(
+                    BlockCoord(east.0 as i64, y, east.1 as i64),
+                    Block::Torch { attached: Surface5::East },
+                );
+            } else if road_along_buildable.contains(&north) {
+                output.set_block_at(
+                    BlockCoord(north.0 as i64, y, north.1 as i64),
+                    Block::Torch { attached: Surface5::North },
+                );
+            } else if road_along_buildable.contains(&south) {
+                output.set_block_at(
+                    BlockCoord(south.0 as i64, y, south.1 as i64),
+                    Block::Torch { attached: Surface5::South },
+                );
+            }
+        }
+
+        // Build torch inside?
+        if index % 4 == 0 {
+            if buildable.contains(&west) && ! buildable_edge.contains(&west) {
+                output.set_block_at(
+                    BlockCoord(west.0 as i64, y, west.1 as i64),
+                    Block::Torch { attached: Surface5::West },
+                );
+            } else if buildable.contains(&east) && ! buildable_edge.contains(&east) {
+                output.set_block_at(
+                    BlockCoord(east.0 as i64, y, east.1 as i64),
+                    Block::Torch { attached: Surface5::East },
+                );
+            } else if buildable.contains(&north) && ! buildable_edge.contains(&north) {
+                output.set_block_at(
+                    BlockCoord(north.0 as i64, y, north.1 as i64),
+                    Block::Torch { attached: Surface5::North },
+                );
+            } else if buildable.contains(&south) && ! buildable_edge.contains(&south) {
+                output.set_block_at(
+                    BlockCoord(south.0 as i64, y, south.1 as i64),
+                    Block::Torch { attached: Surface5::South },
+                );
+            }
+        }
+    }
 
     // TODO Put detailing outside:
     //      Torches. Flowers. Flower beds. Vines. Flower pots. Along outer wall.
 
-    // NB at this stage, it should start to look "decent"
-
     // TODO Put furniture inside:
     //      Bed. Workbench. Furnace. Torches. Flower pots. Chest? Chairs? Tables? Pictures?
-
-    // NB at this stage, it should be fairly OK to ship (BTW, did you handle the lava?)
 
     // Put roof on top
     let mut available_to_roof = buildable.clone();
