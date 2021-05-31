@@ -199,6 +199,15 @@ pub fn build_house(
                 && !buildable_edge.contains(&south_coordinates)
                 && buildable.contains(&south_coordinates)
             {
+                // Make sure door has air outside.
+                output.set_block_at(
+                    BlockCoord(*x as i64, road_y_average as i64 + 1, *z as i64 - 1),
+                    Block::Air,
+                );
+                output.set_block_at(
+                    BlockCoord(*x as i64, road_y_average as i64 + 2, *z as i64 - 1),
+                    Block::Air,
+                );
                 // Put door hinged on south side
                 output.set_block_at(
                     BlockCoord(*x as i64, road_y_average as i64 + 1, *z as i64),
@@ -230,6 +239,15 @@ pub fn build_house(
                 && !buildable_edge.contains(&north_coordinates)
                 && buildable.contains(&north_coordinates)
             {
+                // Make sure door has air outside.
+                output.set_block_at(
+                    BlockCoord(*x as i64, road_y_average as i64 + 1, *z as i64 + 1),
+                    Block::Air,
+                );
+                output.set_block_at(
+                    BlockCoord(*x as i64, road_y_average as i64 + 2, *z as i64 + 1),
+                    Block::Air,
+                );
                 // Put door hinged on north side
                 output.set_block_at(
                     BlockCoord(*x as i64, road_y_average as i64 + 1, *z as i64),
@@ -266,6 +284,15 @@ pub fn build_house(
                 && !buildable_edge.contains(&west_coordinates)
                 && buildable.contains(&west_coordinates)
             {
+                // Make sure door has air outside.
+                output.set_block_at(
+                    BlockCoord(*x as i64 + 1, road_y_average as i64 + 1, *z as i64),
+                    Block::Air,
+                );
+                output.set_block_at(
+                    BlockCoord(*x as i64 + 1, road_y_average as i64 + 2, *z as i64),
+                    Block::Air,
+                );
                 // Put door hinged on west side
                 output.set_block_at(
                     BlockCoord(*x as i64, road_y_average as i64 + 1, *z as i64),
@@ -297,6 +324,15 @@ pub fn build_house(
                 && !buildable_edge.contains(&east_coordinates)
                 && buildable.contains(&east_coordinates)
             {
+                // Make sure door has air outside.
+                output.set_block_at(
+                    BlockCoord(*x as i64 - 1, road_y_average as i64 + 1, *z as i64),
+                    Block::Air,
+                );
+                output.set_block_at(
+                    BlockCoord(*x as i64 - 1, road_y_average as i64 + 2, *z as i64),
+                    Block::Air,
+                );
                 // Put door hinged on east side
                 output.set_block_at(
                     BlockCoord(*x as i64, road_y_average as i64 + 1, *z as i64),
@@ -460,6 +496,14 @@ pub fn build_house(
             let ground_location = BlockCoord(*x as i64, terrain_y as i64 - 1, *z as i64);
             let first_block = ground_location + BlockCoord(0, 1, 0);
             let second_block = ground_location + BlockCoord(0, 2, 0);
+
+            // Do not put detailing down if something else has been put there before
+            if output.block_at(ground_location) != Some(&Block::None)
+            || output.block_at(first_block) != Some(&Block::None)
+            || output.block_at(second_block) != Some(&Block::None)
+            {
+                continue;
+            }
 
             match excerpt.block_at(ground_location) {
                 Some(Block::GrassBlock) => {
