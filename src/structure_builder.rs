@@ -1,3 +1,4 @@
+use crate::block_palette::BlockPalette;
 use crate::build_area::BuildArea;
 use mcprogedit;
 use mcprogedit::block::Block;
@@ -6,7 +7,11 @@ use mcprogedit::positioning::Surface5;
 use mcprogedit::world_excerpt::WorldExcerpt;
 use std::collections::HashSet;
 
-pub fn build_rock(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<WorldExcerpt> {
+pub fn _build_rock(
+    excerpt: &WorldExcerpt,
+    build_area: &BuildArea,
+    _palette: &BlockPalette,
+) -> Option<WorldExcerpt> {
     let height_map = excerpt.height_map();
 
     let (x_len, y_len, z_len) = excerpt.dim();
@@ -34,13 +39,11 @@ pub fn build_rock(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Worl
     Some(output)
 }
 
-pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<WorldExcerpt> {
-    const FOUNDATION_BLOCK: Block = Block::Cobblestone;
-    const FLOOR_BLOCK: Block = Block::dark_oak_planks();
-    const WALL_BLOCK: Block = Block::oak_planks();
-    const ROOF_BLOCK: Block = Block::BrickBlock;
-    const FLAT_WINDOW_BLOCK: Block = Block::glass_pane();
-
+pub fn build_house(
+    excerpt: &WorldExcerpt,
+    build_area: &BuildArea,
+    palette: &BlockPalette,
+) -> Option<WorldExcerpt> {
     const WALL_HEIGHT: usize = 3;
 
     // WorldExcerpt for holding the additions/changes to the world
@@ -143,7 +146,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         let terrain_y = height_map.height_at((*x, *z)).unwrap();
         // Build foundations up to floor block level
         for y in terrain_y as i64..road_y_average as i64 {
-            output.set_block_at(BlockCoord(*x as i64, y, *z as i64), FOUNDATION_BLOCK);
+            output.set_block_at(BlockCoord(*x as i64, y, *z as i64), palette.foundation.clone());
         }
         // Remove terrain from floor block level and up
         for y in road_y_average as i64..=terrain_y as i64 {
@@ -152,7 +155,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         // Build foundations at floor block level
         output.set_block_at(
             BlockCoord(*x as i64, road_y_average as i64, *z as i64),
-            FOUNDATION_BLOCK,
+            palette.foundation.clone(),
         );
     }
 
@@ -161,7 +164,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         if !buildable_edge.contains(&(*x, *z)) {
             output.set_block_at(
                 BlockCoord(*x as i64, road_y_average as i64, *z as i64),
-                FLOOR_BLOCK,
+                palette.floor.clone(),
             );
             for y in (road_y_average + 1)..=(road_y_average + WALL_HEIGHT) {
                 output.set_block_at(BlockCoord(*x as i64, y as i64, *z as i64), Block::Air);
@@ -172,12 +175,12 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     // Build wall along plot edge
     for (x, z) in &buildable_edge {
         for y in (road_y_average + 1)..=(road_y_average + WALL_HEIGHT) {
-            output.set_block_at(BlockCoord(*x as i64, y as i64, *z as i64), WALL_BLOCK);
+            output.set_block_at(BlockCoord(*x as i64, y as i64, *z as i64), palette.wall.clone());
         }
     }
 
     // Put door in wall along plot edge facing road (mind also y positions)
-    // TODO Put some stairs down outside door, if needed.
+    // TODO Put a block or some stairs down outside door, if needed.
     let mut door_placed = false;
     let mut door_location = None;
 
@@ -321,7 +324,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
         }
     }
     if !door_placed {
-        // TODO Try a different strategy before giving up.
+        // TODO Consider trying a different strategy before giving up.
         println!("Unable to find a suitable location for the door!");
         return None;
     }
@@ -374,7 +377,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
     for (x, z) in &window_locations {
         output.set_block_at(
             BlockCoord(*x as i64, road_y_average as i64 + 2, *z as i64),
-            FLAT_WINDOW_BLOCK,
+            palette.flat_window.clone(),
         );
     }
 
@@ -470,7 +473,7 @@ pub fn build_house(excerpt: &WorldExcerpt, build_area: &BuildArea) -> Option<Wor
 
         // Build roof at the found locations, and move from available to unavailable
         for (x, z) in current_roof_set.drain() {
-            output.set_block_at(BlockCoord(x as i64, y, z as i64), ROOF_BLOCK);
+            output.set_block_at(BlockCoord(x as i64, y, z as i64), palette.roof.clone());
             available_to_roof.remove(&(x, z));
             unavailable_to_roof.insert((x, z));
         }

@@ -4,6 +4,7 @@ extern crate clap;
 extern crate mcprogedit;
 
 mod areas;
+mod block_palette;
 mod build_area;
 mod features;
 mod geometry;
@@ -26,6 +27,7 @@ use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
 use crate::areas::*;
+use crate::block_palette::BlockPalette;
 use crate::features::*;
 use crate::geometry::{extract_blocks, LandUsageGraph};
 use crate::partitioning::divide_town_into_blocks;
@@ -93,7 +95,11 @@ fn main() {
     let mut wall_circle = town_circumference.clone();
     wall_circle.push(town_circumference[0]);
 
-    // TODO
+    // Get town size
+    let town_area = geometry::area(&wall_circle);
+    println!("The found city has a total area of {} m².", town_area);
+
+    // TODO FUTURE WORK
     // - Find primary sector areas (agriculture, fishing, forestry, mining)
     // - Put major roads from primary sectors to town circumference
 
@@ -233,8 +239,11 @@ fn main() {
     // Build structures
     // ****************
 
+    // Get a palette for building with
+    let block_palette = BlockPalette::default();
+
     // Build that wall! (But who is going to pay for it?)
-    wall::build_wall(&mut excerpt, &wall_circle, &features);
+    wall::build_wall(&mut excerpt, &wall_circle, &features, &block_palette);
 
     // Build the various roads and streets...
     // TODO Change road width depending on total town area?
@@ -280,7 +289,7 @@ fn main() {
 
             // Generate a structure on the plot
             if let Some(new_plot) =
-                structure_builder::build_house(&plot_excerpt, &plot_build_area)
+                structure_builder::build_house(&plot_excerpt, &plot_build_area, &block_palette)
             {
                 // TODO Enforce plot_build_area before pasting the new plot into the world?
 
@@ -305,7 +314,7 @@ fn main() {
         }
     }
 
-    wall::build_wall_crowning(&mut excerpt, &wall_circle, &features);
+    wall::build_wall_crowning(&mut excerpt, &wall_circle, &features, &block_palette);
 
     /*
     println!("Testing rainbow trees!");

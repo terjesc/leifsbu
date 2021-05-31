@@ -1,3 +1,4 @@
+use crate::block_palette::BlockPalette;
 use crate::features::Features;
 use crate::line;
 use crate::tree;
@@ -6,7 +7,12 @@ use mcprogedit::block::Block;
 use mcprogedit::coordinates::BlockColumnCoord;
 use mcprogedit::world_excerpt::WorldExcerpt;
 
-pub fn build_wall(excerpt: &mut WorldExcerpt, town_circumference: &Snake, features: &Features) {
+pub fn build_wall(
+    excerpt: &mut WorldExcerpt,
+    town_circumference: &Snake,
+    features: &Features,
+    palette: &BlockPalette,
+) {
     // Build the walls pt. 1: Segments of wall.
     for wall_segment in town_circumference.windows(2) {
         let (start, end) = (wall_segment[0], wall_segment[1]);
@@ -29,11 +35,11 @@ pub fn build_wall(excerpt: &mut WorldExcerpt, town_circumference: &Snake, featur
             tree::chop(excerpt, position - (0, 4, 0).into());
             tree::chop(excerpt, position - (0, 5, 0).into());
             excerpt.set_block_at(position, Block::StoneBricks);
-            excerpt.set_block_at(position - (0, 1, 0).into(), Block::StoneBricks);
-            excerpt.set_block_at(position - (0, 2, 0).into(), Block::StoneBricks);
-            excerpt.set_block_at(position - (0, 3, 0).into(), Block::StoneBricks);
-            excerpt.set_block_at(position - (0, 4, 0).into(), Block::StoneBricks);
-            excerpt.set_block_at(position - (0, 5, 0).into(), Block::StoneBricks);
+            excerpt.set_block_at(position - (0, 1, 0).into(), palette.city_wall_main.clone());
+            excerpt.set_block_at(position - (0, 2, 0).into(), palette.city_wall_main.clone());
+            excerpt.set_block_at(position - (0, 3, 0).into(), palette.city_wall_main.clone());
+            excerpt.set_block_at(position - (0, 4, 0).into(), palette.city_wall_main.clone());
+            excerpt.set_block_at(position - (0, 5, 0).into(), palette.city_wall_main.clone());
         }
     }
 
@@ -47,7 +53,7 @@ pub fn build_wall(excerpt: &mut WorldExcerpt, town_circumference: &Snake, featur
         for y in ground..ground + 5 {
             let coordinates = (*x, y, *z).into();
             tree::chop(excerpt, coordinates);
-            excerpt.set_block_at(coordinates, Block::StoneBricks);
+            excerpt.set_block_at(coordinates, palette.city_wall_main.clone());
         }
         let coordinates = (*x, ground + 5, *z).into();
         tree::chop(excerpt, coordinates);
@@ -59,6 +65,7 @@ pub fn build_wall_crowning(
     excerpt: &mut WorldExcerpt,
     town_circumference: &Snake,
     features: &Features,
+    palette: &BlockPalette,
 ) {
     for wall_segment in town_circumference.windows(2) {
         let (start, end) = (wall_segment[0], wall_segment[1]);
@@ -75,7 +82,7 @@ pub fn build_wall_crowning(
 
         for position in line {
             tree::chop(excerpt, position);
-            excerpt.set_block_at(position, Block::StoneBricks);
+            excerpt.set_block_at(position, palette.city_wall_top.clone());
         }
 
         let line = line::double_line(
@@ -86,7 +93,7 @@ pub fn build_wall_crowning(
 
         for position in line {
             tree::chop(excerpt, position);
-            excerpt.set_block_at(position, Block::Cobblestone);
+            excerpt.set_block_at(position, palette.city_wall_coronation.clone());
         }
     }
 }
