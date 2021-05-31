@@ -305,15 +305,17 @@ pub fn extract_blocks(graph: &LandUsageGraph) -> Vec<Vec<BlockColumnCoord>> {
             visited.insert(next_edge);
 
             if visited_in_area.contains(&next_edge) {
+                /*
                 println!(
                     "We found a loop (size {}) when starting from edge {:?}, that loops from {:?}",
                     area.len(),
                     first_edge,
                     next_edge,
                 );
+                */
 
                 if first_edge == next_edge {
-                    println!("The loop is accepted.");
+                    //println!("The loop is accepted.");
                     areas.push(area);
                 }
                 break;
@@ -431,11 +433,32 @@ pub fn intersection(edge_a: RawEdge2d, edge_b: RawEdge2d) -> IntersectionPoints 
         let b_ratio = b1 as f32 / b2 as f32;
         let c_ratio = c1 as f32 / c2 as f32;
         if a_ratio == b_ratio && b_ratio == c_ratio {
-            // Segments may overlap, as their infinite continuations are  identical
-            // TODO check if they overlap.
-            // There may be one or two instances of a point on one laying on the line of the other,
-            // or of coinciding points.
-            IntersectionPoints::None
+            // Segments may overlap, as their infinite continuations are identical
+            if (a_x1, a_y1) == (b_x1, b_y1)
+            && (a_x2, a_y2) == (b_x2, b_y2)
+            || (a_x1, a_y1) == (b_x2, b_y2)
+            && (a_x2, a_y2) == (b_x1, b_y1)
+            {
+                // Both endpoints are shared
+                IntersectionPoints::Two(BlockColumnCoord(a_x1, a_y1), BlockColumnCoord(a_x2, a_y2))
+            } else if (a_x1, a_y1) == (b_x1, b_y1)
+            || (a_x1, a_y1) == (b_x2, b_y2)
+            {
+                // One endpoint is shared
+                IntersectionPoints::One(BlockColumnCoord(a_x1, a_y1))
+            } else if (a_x2, a_y2) == (b_x1, b_y1)
+            || (a_x2, a_y2) == (b_x2, b_y2)
+            {
+                // One endpoint is shared
+                IntersectionPoints::One(BlockColumnCoord(a_x2, a_y2))
+            } else {
+                // No common points
+                IntersectionPoints::None
+            }
+            // TODO When the lines are overlapping such that an end point of a is inside b,
+            //      and an end point of b is inside a
+            // TODO When the lines are overlapping such that both end points of a are inside b.
+            // TODO When the lines are overlapping such that both end points of b are inside a.
         } else {
             // Lines are not overlapping
             IntersectionPoints::None
