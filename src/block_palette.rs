@@ -1,6 +1,5 @@
 use mcprogedit::block::Block;
 use mcprogedit::block::Flower;
-use std::collections::HashSet;
 
 #[derive(Clone)]
 pub struct BlockPalette {
@@ -9,7 +8,7 @@ pub struct BlockPalette {
     pub city_wall_top: Block,
     pub flat_window: Block,
     pub floor: Block,
-    pub flowers: HashSet<Flower>,
+    pub flowers: Vec<Flower>,
     pub foundation: Block,
     pub roof: Block,
     pub wall: Block,
@@ -23,7 +22,7 @@ impl Default for BlockPalette {
             city_wall_top: Block::StoneBricks,
             flat_window: Block::glass_pane(),
             floor: Block::dark_oak_planks(),
-            flowers: HashSet::new(),
+            flowers: Vec::new(),
             foundation: Block::StoneBricks,
             roof: Block::BrickBlock,
             wall: Block::Cobblestone,

@@ -1,10 +1,11 @@
 use crate::block_palette::BlockPalette;
 use crate::build_area::BuildArea;
 use mcprogedit;
-use mcprogedit::block::Block;
+use mcprogedit::block::{Block, Flower};
 use mcprogedit::coordinates::BlockCoord;
 use mcprogedit::positioning::Surface5;
 use mcprogedit::world_excerpt::WorldExcerpt;
+use std::cmp::max;
 use std::collections::HashSet;
 
 pub fn _build_rock(
@@ -447,11 +448,60 @@ pub fn build_house(
         }
     }
 
+    if !palette.flowers.is_empty() {
+        for (index, (x, z)) in road_along_buildable.iter().enumerate(){
+            // Don't put anything down most of the time.
+            if index % 3 != 0 {
+                continue;
+            }
+
+            let terrain_y = height_map.height_at((*x, *z)).unwrap();
+
+            let ground_location = BlockCoord(*x as i64, terrain_y as i64 - 1, *z as i64);
+            let first_block = ground_location + BlockCoord(0, 1, 0);
+            let second_block = ground_location + BlockCoord(0, 2, 0);
+
+            match excerpt.block_at(ground_location) {
+                Some(Block::GrassBlock) => {
+                    let flower_index = index % max(8, palette.flowers.len() + 2);
+                    if flower_index < palette.flowers.len() {
+                        // Below flower
+                        match index % 3 {
+                            0 | 1 => output.set_block_at(ground_location, Block::CoarseDirt),
+                            _ => output.set_block_at(ground_location, Block::Podzol),
+                        }
+                        // Bottom part
+                        output.set_block_at(first_block, Block::Flower(palette.flowers[flower_index]));
+
+                        // Top part
+                        match palette.flowers[flower_index] {
+                            Flower::LilacBottom => {
+                                output.set_block_at(second_block, Block::Flower(Flower::LilacTop));
+                            }
+                            Flower::PeonyBottom => {
+                                output.set_block_at(second_block, Block::Flower(Flower::PeonyTop));
+                            }
+                            Flower::RoseBushBottom => {
+                                output.set_block_at(second_block, Block::Flower(Flower::RoseBushTop));
+                            }
+                            Flower::SunflowerBottom => {
+                                output.set_block_at(second_block, Block::Flower(Flower::SunflowerTop));
+                            }
+                            _ => (),
+                        }
+                    } else {
+                        // TODO Maybe consider something else?
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
     // TODO Put detailing outside:
-    //      Torches. Flowers. Flower beds. Vines. Flower pots. Along outer wall.
+    //      Flowers. Flower beds. Vines. Flower pots. Along outer wall.
 
     // TODO Put furniture inside:
-    //      Bed. Workbench. Furnace. Torches. Flower pots. Chest? Chairs? Tables? Pictures?
+    //      Bed. Workbench. Furnace. Flower pots. Chest? Chairs? Tables? Pictures?
 
     // Put roof on top
     let mut available_to_roof = buildable.clone();

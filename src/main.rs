@@ -312,7 +312,7 @@ fn main() {
 
     // Use found materials for a default block palette
     let mut block_palette = BlockPalette::default();
-    block_palette.flowers = available_flowers.clone();
+    block_palette.flowers = available_flowers.clone().into_iter().collect();
 
     if sand_count > grass_count {
         // Assume that we are in or close to a desert biome;
