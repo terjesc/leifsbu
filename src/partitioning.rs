@@ -634,7 +634,7 @@ fn closest_road_node(
     }
 }
 
-fn snake_bounding_box(snake: &Snake) -> (BlockColumnCoord, BlockColumnCoord) {
+pub fn snake_bounding_box(snake: &Snake) -> (BlockColumnCoord, BlockColumnCoord) {
     let offset = snake
         .iter()
         .copied()

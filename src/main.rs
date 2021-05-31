@@ -19,11 +19,14 @@ mod types;
 mod wall;
 mod walled_town;
 
+use std::cmp::min;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use imageproc::stats::histogram;
-use mcprogedit::block::Block;
+use mcprogedit::block::{Block, Log};
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
+use mcprogedit::material::WoodMaterial;
 use mcprogedit::world_excerpt::WorldExcerpt;
 
 use crate::areas::*;
@@ -236,11 +239,100 @@ fn main() {
     city_plan.save("city plan.png").unwrap();
 
 
+    // Find local materials
+    // ********************
+
+    // Survey the area inside and around town, to find local materials.
+    let (town_offset, town_dimensions) = partitioning::snake_bounding_box(&wall_circle);
+
+    let proximity_min_x = town_offset.0.saturating_sub(100);
+    let proximity_max_x = min(x_len, town_offset.0 + town_dimensions.0 + 100);
+    let proximity_min_z = town_offset.1.saturating_sub(100);
+    let proximity_max_z = min(z_len, town_offset.1 + town_dimensions.0 + 100);
+
+    let mut sand_count = 0;
+    let mut grass_count = 0;
+    let mut available_flowers = HashSet::new();
+    let mut wood_statistics = HashMap::new();
+
+    for x in proximity_min_x..proximity_max_x {
+        for z in proximity_min_z..proximity_max_z {
+            if let Some(terrain_y) = features.terrain_height_map.height_at(
+                (x as usize, z as usize)
+            ) {
+                for y in terrain_y-1..terrain_y+1 {
+                    match excerpt.block_at(BlockCoord(x, y as i64, z)) {
+                        // Make some statistics
+                        Some(Block::Sand) => sand_count += 1,
+                        Some(Block::GrassBlock) => grass_count += 1,
+                        Some(Block::Flower(flower)) => {
+                            available_flowers.insert(*flower);
+                        }
+                        Some(Block::Log(Log { material, .. })) => {
+                            *wood_statistics.entry(*material).or_insert(0) += 1;
+                        }
+                        _ => (),
+                    }
+                }
+            }
+        }
+    }
+
+    let mut wood_statistics: Vec<_> = wood_statistics.into_iter().collect();
+    wood_statistics.sort_by(|a, b| a.1.cmp(&b.1).reverse());
+
+    // wood_available to be used later, for replacing wall/roof materials in the
+    // block palette used for building individual houses.
+    let mut wood_available = Vec::new();
+    let max_wood_count = if let Some((_, count)) = wood_statistics.first() {
+        *count
+    } else {
+        0
+    };
+    for (wood, count) in wood_statistics {
+        if count >= max_wood_count / 50 {
+            wood_available.push(wood);
+        }
+    }
+    // Sort the woods by colour in order not to get too psychedelic.
+    fn shade(wood: &WoodMaterial) -> i8 {
+        match wood {
+            WoodMaterial::Acacia => 5,
+            WoodMaterial::Birch => 4,
+            WoodMaterial::DarkOak => 0,
+            WoodMaterial::Jungle => 3,
+            WoodMaterial::Oak => 2,
+            WoodMaterial::Spruce => 1,
+            _ => 6,
+        }
+    }
+    wood_available.sort_by(|a, b| shade(a).cmp(&shade(b)));
+
+    println!("Decided that {:?} are the common wood materials.", wood_available);
+
+    // Use found materials for a default block palette
+    let mut block_palette = BlockPalette::default();
+    block_palette.flowers = available_flowers.clone();
+
+    if sand_count > grass_count {
+        // Assume that we are in or close to a desert biome;
+        // Use sandstone instead of stone, for city wall and other "stone" structures.
+        block_palette.city_wall_coronation = Block::Sandstone;
+        block_palette.city_wall_main = Block::Sandstone;
+        block_palette.city_wall_top = Block::SmoothSandstone;
+        block_palette.foundation = Block::EndStoneBricks;
+        block_palette.floor = Block::SmoothSandstone;
+        block_palette.wall = Block::Sandstone;
+    }
+
+    println!(
+        "Found {} different flowers.",
+        available_flowers.len(),
+    );
+
+
     // Build structures
     // ****************
-
-    // Get a palette for building with
-    let block_palette = BlockPalette::default();
 
     // Build that wall! (But who is going to pay for it?)
     wall::build_wall(&mut excerpt, &wall_circle, &features, &block_palette);
@@ -287,9 +379,59 @@ fn main() {
             let plot_build_area =
                 build_area::BuildArea::from_world_excerpt_and_plot(&plot_excerpt, &offset_plot);
 
+            // Modify the palette, depending on the diversity of available wood
+            let mut custom_palette = block_palette.clone();
+            if wood_available.is_empty() {
+                // Sadly no wood to use here.
+            } else if wood_available.len() == 1 {
+                // Replace most walls with the available wood
+                match index % 4 {
+                    0 | 1 | 2 => {
+                        custom_palette.foundation = block_palette.wall.clone();
+                        custom_palette.wall = Block::Planks { material: wood_available[0] };
+                    }
+                    // If the walls were not replaced, replace the floor instead.
+                    _ => {
+                        custom_palette.floor = Block::Planks { material: wood_available[0] };
+                    },
+                }
+            } else if wood_available.len() == 2 {
+                // Replace all roofs with one kind of wood.
+                custom_palette.roof = Block::Planks { material: wood_available[0] };
+                // Replace most walls with the other kind of wood.
+                match index % 4 {
+                    0 | 1 | 2 => {
+                        custom_palette.foundation = block_palette.wall.clone();
+                        custom_palette.wall = Block::Planks { material: wood_available[1] };
+                    }
+                    // If the walls were not replaced, replace the floor instead.
+                    _ => {
+                        custom_palette.floor = Block::Planks { material: wood_available[1] };
+                    },
+                }
+            } else {
+                // Replace all roofs with one kind of wood.
+                custom_palette.roof = Block::Planks { material: wood_available[1] };
+                // Replace most walls with one of the other kinds of wood.
+                match index % 4 {
+                    0 | 1 | 2 => {
+                        custom_palette.foundation = block_palette.wall.clone();
+                        custom_palette.wall = Block::Planks { material: wood_available[2] };
+                    }
+                    _ => (),
+                }
+                // Replace quite a few floors with the other remaining kind of wood.
+                match index % 5 {
+                    0 | 1 | 2 => {
+                        custom_palette.floor = Block::Planks { material: wood_available[0] };
+                    }
+                    _ => (),
+                }
+            }
+
             // Generate a structure on the plot
             if let Some(new_plot) =
-                structure_builder::build_house(&plot_excerpt, &plot_build_area, &block_palette)
+                structure_builder::build_house(&plot_excerpt, &plot_build_area, &custom_palette)
             {
                 // TODO Enforce plot_build_area before pasting the new plot into the world?
 
