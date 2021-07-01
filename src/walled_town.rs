@@ -19,7 +19,7 @@ use crate::Features;
 pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockColumnCoord) {
     let mut not_town = areas.town.clone();
     invert(&mut not_town);
-    not_town.save("T-01 not town.png").unwrap();
+    //not_town.save("T-01 not town.png").unwrap();
 
     let (x_len, z_len) = not_town.dimensions();
 
@@ -36,9 +36,9 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     let water_depth_energy = map_colors(&water_depth_energy, |p| {
         image::Luma([p[0].saturating_mul(p[0])])
     });
-    water_depth_energy
-        .save("T-04 water depth energy.png")
-        .unwrap();
+    //water_depth_energy
+    //    .save("T-04 water depth energy.png")
+    //    .unwrap();
 
     // Distance from shore -> penalty
     // TODO Maybe start the penalty a few blocks ashore?
@@ -48,15 +48,15 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     let offshore_distance_energy = map_colors(&offshore_distance_energy, |p| {
         image::Luma([p[0].saturating_mul(4)])
     });
-    offshore_distance_energy
-        .save("T-05 offshore distance energy.png")
-        .unwrap();
+    //offshore_distance_energy
+    //    .save("T-05 offshore distance energy.png")
+    //    .unwrap();
 
     // Steep terrain -> penalty
     let mut slope_energy = features.scharr.clone();
     threshold_mut(&mut slope_energy, 16u8);
     close_mut(&mut slope_energy, Norm::LInf, 3);
-    slope_energy.save("T-07 slope energy.png").unwrap();
+    //slope_energy.save("T-07 slope energy.png").unwrap();
 
     let mut energy = image::ImageBuffer::new(x_len as u32, z_len as u32);
     for x in 0..x_len {
@@ -75,11 +75,11 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     let energy = imageproc::map::map_colors2(&energy, &features.hilltop, |p, q| {
         image::Luma([p[0].saturating_add(NEUTRAL_ENERGY).saturating_sub(q[0])])
     });
-    energy.save("T-10 energy.png").unwrap();
+    //energy.save("T-10 energy.png").unwrap();
 
     // map of distance from (potential) town edge
     let town_density = distance_transform(&threshold(&energy, NEUTRAL_ENERGY), Norm::LInf);
-    town_density.save("T-02 town density.png").unwrap();
+    //town_density.save("T-02 town density.png").unwrap();
 
     // points the farthest away from (potential) town edge are potential town centers.
     let mut town_centers = suppress_non_maximum(&town_density, 8);
@@ -106,7 +106,7 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     town_center_list.sort_by(|a, b| b.partial_cmp(a).unwrap());
 
     threshold_mut(&mut town_centers, 0u8);
-    town_centers.save("T-03 town centers.png").unwrap();
+    //town_centers.save("T-03 town centers.png").unwrap();
 
     // TODO Maybe calculate and rate the N most promising locations?
     //      For now: Use the one the farthest away from "non-suitable" features/areas.
@@ -156,11 +156,12 @@ fn walled_town_contour_internal(
 
     let num_points = radius as usize * 2;
     let mut snake = circle_snake(num_points, radius as usize, center, max);
-    save_snake_image(&snake, &map_img, &"acm_000.png".to_string());
+    //save_snake_image(&snake, &map_img, &"acm_000.png".to_string());
 
     for iteration in 1..=100 {
         let (s, _energy) = active_contour_model(snake.clone(), &costs, ALPHA, BETA, GAMMA, INFLATE);
 
+        /*
         if iteration == 1 {
             save_snake_image(&snake, &map_img, &"acm_001.png".to_string());
         } else if iteration % 10 == 0 {
@@ -168,6 +169,7 @@ fn walled_town_contour_internal(
             save_snake_image(&snake, &map_img, &file_name);
             println!("Saved {}", file_name);
         }
+        */
 
         snake = s;
     }

@@ -42,11 +42,11 @@ impl Areas {
         invert(&mut land_mask);
         morphology::close_mut(&mut land_mask, Norm::L1, TOWN_DISTANCE_INTO_WATER);
         morphology::open_mut(&mut land_mask, Norm::L1, TOWN_DISTANCE_INTO_WATER);
-        land_mask.save("A-01a land mask.png").unwrap();
+        //land_mask.save("A-01a land mask.png").unwrap();
         // * reasonably flat
         let mut flat_mask = contrast::threshold(&features.scharr, TOWN_FLATNESS_TRESHOLD);
         invert(&mut flat_mask);
-        flat_mask.save("A-01b flat mask.png").unwrap();
+        //flat_mask.save("A-01b flat mask.png").unwrap();
         // * not full of trees
         let mut forest_mask = Self::woodcutters(&features);
         invert(&mut forest_mask);
@@ -54,7 +54,7 @@ impl Areas {
         //distance_transform_mut(&mut forest_mask, Norm::LInf);
         //threshold_mut(&mut forest_mask, 6u8);
         //invert(&mut forest_mask);
-        forest_mask.save("A-01c forest mask.png").unwrap();
+        //forest_mask.save("A-01c forest mask.png").unwrap();
 
         // Intersection of masks is suitable for town
         let (x_len, z_len) = features.dimensions();
@@ -68,7 +68,7 @@ impl Areas {
                 }
             }
         }
-        town.save("A-01 town.png").unwrap();
+        //town.save("A-01 town.png").unwrap();
 
         town
     }
@@ -85,7 +85,7 @@ impl Areas {
             Norm::L1,
             2 * WOOD_CONNECTEDNESS_TRESHOLD,
         );
-        woodcutters.save("A-02 woodcutters.png").unwrap();
+        //woodcutters.save("A-02 woodcutters.png").unwrap();
 
         woodcutters
     }
@@ -99,7 +99,7 @@ impl Areas {
 
         let (x_len, z_len) = features.dimensions();
         let agriculture = image::ImageBuffer::new(x_len as u32, z_len as u32);
-        agriculture.save("A-03 agriculture.png").unwrap();
+        //agriculture.save("A-03 agriculture.png").unwrap();
 
         agriculture
     }

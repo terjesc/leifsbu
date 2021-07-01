@@ -155,7 +155,7 @@ fn main() {
             raw_roads.push(path);
         }
     }
-    road_path_image.save("road_path_001.png").unwrap();
+    //road_path_image.save("road_path_001.png").unwrap();
 
     // Split out the raw roads into city roads and country roads
     let (mut city_roads, country_roads) = roads_split(&raw_roads, &wall_circle);
@@ -197,7 +197,7 @@ fn main() {
             &BlockColumnCoord(0, 0),
             image::Luma([255u8]),
         );
-        district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
+        //district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
         println!("District {} has area {}.", colour, geometry::area(&district));
     
         let stats = histogram(&district_image);
@@ -236,7 +236,7 @@ fn main() {
         pathfinding::draw_road_path(&mut city_plan, road);
     }
     */
-    city_plan.save("city plan.png").unwrap();
+    //city_plan.save("city plan.png").unwrap();
 
 
     // Find local materials

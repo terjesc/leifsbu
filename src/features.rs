@@ -53,7 +53,7 @@ impl Features {
                 heights.put_pixel(x as u32, z as u32, image::Luma([value]));
             }
         }
-        heights.save("01 raw height map.png").unwrap();
+        //heights.save("01 raw height map.png").unwrap();
 
         // Update the height map not to include foilage.
         let mut terrain_height_map = height_map.clone();
@@ -79,7 +79,7 @@ impl Features {
                 terrain.put_pixel(x as u32, z as u32, image::Luma([value]));
             }
         }
-        terrain.save("02 height map without foilage.png").unwrap();
+        //terrain.save("02 height map without foilage.png").unwrap();
 
 
         // Coloured land heightmap with water
@@ -94,7 +94,7 @@ impl Features {
                 colour_img.put_pixel(x as u32, z as u32, pixel);
             }
         }
-        colour_img.save("03 coloured map.png").unwrap();
+        //colour_img.save("03 coloured map.png").unwrap();
 
 
         // Various kernels for slope and edge detection
@@ -141,9 +141,9 @@ impl Features {
         let edge_img = image::imageops::filter3x3(&edge_img, &gauss);
         let edge_img = image::imageops::filter3x3(&edge_img, &gauss);
         let edge_img = image::imageops::filter3x3(&edge_img, &edge);
-        horizontal_img.save("04a horizontal sobel.png").unwrap();
-        vertical_img.save("04b vertical sobel.png").unwrap();
-        edge_img.save("04c edge.png").unwrap();
+        //horizontal_img.save("04a horizontal sobel.png").unwrap();
+        //vertical_img.save("04b vertical sobel.png").unwrap();
+        //edge_img.save("04c edge.png").unwrap();
 
         // Full Sobel
         let mut sobel_relief = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -162,7 +162,7 @@ impl Features {
                 sobel_relief.put_pixel(x, z, image::Luma([value]));
             }
         }
-        sobel_relief.save("04d sobel.png").unwrap();
+        //sobel_relief.save("04d sobel.png").unwrap();
 
         // Full Scharr
         let horizontal_img = image::imageops::filter3x3(&terrain, &horizontal_scharr);
@@ -184,7 +184,7 @@ impl Features {
                 scharr.put_pixel(x, z, image::Luma([value as u8]));
             }
         }
-        scharr.save("04e scharr.png").unwrap();
+        //scharr.save("04e scharr.png").unwrap();
 
         // Hilltops (double scharr)
         const THRESHOLD: u8 = 9;
@@ -220,7 +220,7 @@ impl Features {
                 image::Luma([p[0].saturating_sub(q[0])])
             },
         );
-        hilltop.save("04f hilltop.png").unwrap();
+        //hilltop.save("04f hilltop.png").unwrap();
 
         // scharr with low values removed
         let mut scharr_cleaned = scharr.clone();
@@ -233,7 +233,7 @@ impl Features {
                 }
             }
         }
-        scharr_cleaned.save("04f scharr cleaned.png").unwrap();
+        //scharr_cleaned.save("04f scharr cleaned.png").unwrap();
 
         // Various features
         let mut water = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -274,11 +274,11 @@ impl Features {
             }
         }
 
-        water.save("05a water.png").unwrap();
-        fertile.save("05b fertile land.png").unwrap();
-        sand.save("05c sand.png").unwrap();
-        gravel.save("05d gravel.png").unwrap();
-        exposed_ore.save("05e exposed ore.png").unwrap();
+        //water.save("05a water.png").unwrap();
+        //fertile.save("05b fertile land.png").unwrap();
+        //sand.save("05c sand.png").unwrap();
+        //gravel.save("05d gravel.png").unwrap();
+        //exposed_ore.save("05e exposed ore.png").unwrap();
 
         // Forests
         let mut forest = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -294,7 +294,7 @@ impl Features {
                 }
             }
         }
-        forest.save("05f forest.png").unwrap();
+        //forest.save("05f forest.png").unwrap();
 
         // Water depth
         let mut water_depth = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -312,7 +312,7 @@ impl Features {
                 }
             }
         }
-        water_depth.save("06 water depth.png").unwrap();
+        //water_depth.save("06 water depth.png").unwrap();
 
         Self {
             // Height maps
