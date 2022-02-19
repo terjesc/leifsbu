@@ -187,18 +187,18 @@ fn main() {
         let mut district_image = image::ImageBuffer::new(x_len as u32, z_len as u32);
         geometry::draw_area(
             &mut district_image,
-            &district,
+            district,
             BlockColumnCoord(0, 0),
             image::Luma([63u8]),
         );
         partitioning::draw_offset_snake(
             &mut district_image,
-            &district,
+            district,
             &BlockColumnCoord(0, 0),
             image::Luma([255u8]),
         );
         //district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
-        println!("District {} has area {}.", colour, geometry::area(&district));
+        println!("District {} has area {}.", colour, geometry::area(district));
     
         let stats = histogram(&district_image);
         let surface_area = stats.channels[0][63];
@@ -295,24 +295,23 @@ fn main() {
         }
     }
     // Sort the woods by colour in order not to get too psychedelic.
-    fn shade(wood: &WoodMaterial) -> i8 {
-        match wood {
-            WoodMaterial::Acacia => 5,
-            WoodMaterial::Birch => 4,
-            WoodMaterial::DarkOak => 0,
-            WoodMaterial::Jungle => 3,
-            WoodMaterial::Oak => 2,
-            WoodMaterial::Spruce => 1,
-            _ => 6,
-        }
-    }
-    wood_available.sort_by(|a, b| shade(a).cmp(&shade(b)));
+    wood_available.sort_by_key(|wood_material| match wood_material {
+        WoodMaterial::Acacia => 5,
+        WoodMaterial::Birch => 4,
+        WoodMaterial::DarkOak => 0,
+        WoodMaterial::Jungle => 3,
+        WoodMaterial::Oak => 2,
+        WoodMaterial::Spruce => 1,
+        _ => 6,
+    });
 
     println!("Decided that {:?} are the common wood materials.", wood_available);
 
     // Use found materials for a default block palette
-    let mut block_palette = BlockPalette::default();
-    block_palette.flowers = available_flowers.clone().into_iter().collect();
+    let mut block_palette = BlockPalette {
+        flowers: available_flowers.clone().into_iter().collect(),
+        ..Default::default()
+    };
 
     if sand_count > grass_count {
         // Assume that we are in or close to a desert biome;

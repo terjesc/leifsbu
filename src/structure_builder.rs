@@ -1,6 +1,5 @@
 use crate::block_palette::BlockPalette;
 use crate::build_area::BuildArea;
-use mcprogedit;
 use mcprogedit::block::{Block, Flower};
 use mcprogedit::coordinates::BlockCoord;
 use mcprogedit::positioning::Surface5;

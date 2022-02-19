@@ -100,7 +100,7 @@ use std::cmp::{max, min};
 pub fn divide_town_into_blocks(
     circumference: &Snake,
     town_center: &BlockColumnCoord,
-    roads: &Vec<RoadPath>,
+    roads: &[RoadPath],
     height_map: &GrayImage,
 ) -> Vec<RoadPath> {
     const COVERED: Luma<u8> = Luma([255u8]);
@@ -332,11 +332,11 @@ pub fn divide_town_into_blocks(
 
         //  Find possible path close by wall
         let close_path = sub_snake(&street_close_to_border, &full_area_stencil, &offset);
-        let close_path = attach_to_road_system(&close_path, &roads, 4f32);
+        let close_path = attach_to_road_system(&close_path, roads, 4f32);
 
         // Find possible path further from wall
         let far_path = sub_snake(&street_far_from_border, &full_area_stencil, &offset);
-        let far_path = attach_to_road_system(&far_path, &roads, 4f32);
+        let far_path = attach_to_road_system(&far_path, roads, 4f32);
 
         // NB Only for making nice debug visuals...
         let mut wall_roads = image::ImageBuffer::new(dimensions.0 as u32, dimensions.1 as u32);
@@ -459,14 +459,14 @@ pub fn divide_town_into_blocks(
                         .into();
 
                     // Adjust the end points to the nearby road or street
-                    if let Some(new_point) = closest_road_node(&roads, &start_point, 4f32) {
+                    if let Some(new_point) = closest_road_node(roads, &start_point, 4f32) {
                         start_point = new_point;
                     } else if let Some(new_point) = closest_road_node(&streets, &start_point, 4f32)
                     {
                         start_point = new_point;
                     }
 
-                    if let Some(new_point) = closest_road_node(&roads, &goal_point, 4f32) {
+                    if let Some(new_point) = closest_road_node(roads, &goal_point, 4f32) {
                         goal_point = new_point;
                     } else if let Some(new_point) = closest_road_node(&streets, &goal_point, 4f32) {
                         goal_point = new_point;
@@ -508,14 +508,14 @@ pub fn divide_town_into_blocks(
                         .into();
 
                     // Adjust the end points to the nearby road or street
-                    if let Some(new_point) = closest_road_node(&roads, &start_point, 4f32) {
+                    if let Some(new_point) = closest_road_node(roads, &start_point, 4f32) {
                         start_point = new_point;
                     } else if let Some(new_point) = closest_road_node(&streets, &start_point, 4f32)
                     {
                         start_point = new_point;
                     }
 
-                    if let Some(new_point) = closest_road_node(&roads, &goal_point, 4f32) {
+                    if let Some(new_point) = closest_road_node(roads, &goal_point, 4f32) {
                         goal_point = new_point;
                     } else if let Some(new_point) = closest_road_node(&streets, &goal_point, 4f32) {
                         goal_point = new_point;
@@ -547,13 +547,13 @@ pub fn divide_town_into_blocks(
 pub fn _divide_area_into_plots(
     _circumference: &Snake,
     _town_center: &BlockColumnCoord,
-    _roads: &Vec<RoadPath>,
+    _roads: &[RoadPath],
     _height_map: &GrayImage,
 ) -> Vec<RoadPath> {
     unimplemented!();
 }
 
-fn attach_to_road_system(path: &Snake, attach_to: &Vec<RoadPath>, epsilon: f32) -> Snake {
+fn attach_to_road_system(path: &Snake, attach_to: &[RoadPath], epsilon: f32) -> Snake {
     let mut path = path.clone();
 
     if let Some(first_point) = path.first_mut() {
@@ -572,7 +572,7 @@ fn attach_to_road_system(path: &Snake, attach_to: &Vec<RoadPath>, epsilon: f32) 
 }
 
 fn closest_road_point(
-    roads: &Vec<RoadPath>,
+    roads: &[RoadPath],
     closest_to: &BlockColumnCoord,
     epsilon: f32,
 ) -> Option<BlockColumnCoord> {
@@ -604,11 +604,11 @@ fn closest_road_point(
 
 /// Given a point and a set of roads, returns the road node closest to the point
 fn closest_road_node(
-    roads: &Vec<RoadPath>,
+    roads: &[RoadPath],
     closest_to: &BlockCoord,
     epsilon: f32,
 ) -> Option<BlockCoord> {
-    let mut closest_point = closest_to.clone();
+    let mut closest_point = *closest_to;
     let mut closest_manhattan = usize::MAX / 2;
     let mut closest_euclidean = f32::MAX;
 
@@ -806,15 +806,11 @@ fn sub_snake(snake: &Snake, stencil: &GrayImage, offset: &BlockColumnCoord) -> S
 
     for i in 0..(snake.len() * 2) - 1 {
         let coordinates = snake[i % snake.len()];
-        let inside = if Luma([255u8])
+        let inside = Luma([255u8])
             == stencil[(
                 (coordinates.0 as i64 - offset.0 as i64) as u32,
                 (coordinates.1 as i64 - offset.1 as i64) as u32,
-            )] {
-            true
-        } else {
-            false
-        };
+            )];
 
         if !snake_ended {
             if !inside {
@@ -833,10 +829,8 @@ fn sub_snake(snake: &Snake, stencil: &GrayImage, offset: &BlockColumnCoord) -> S
 
 fn fully_covers(under: &GrayImage, covering: &GrayImage) -> bool {
     for (x, z, value) in under.enumerate_pixels() {
-        if *value == Luma([255u8]) {
-            if covering[(x, z)] != Luma([255u8]) {
-                return false;
-            }
+        if *value == Luma([255u8]) && covering[(x, z)] != Luma([255u8]) {
+            return false;
         }
     }
     true
@@ -878,8 +872,7 @@ fn resnake(snake: &Snake, min_length: f32, max_length: f32) -> Snake {
         return Vec::new();
     }
 
-    let mut output = Vec::new();
-    output.push(snake[0]);
+    let mut output = vec![snake[0]];
 
     let distances: Vec<f32> = snake
         .windows(2)

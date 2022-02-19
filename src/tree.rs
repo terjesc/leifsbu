@@ -155,7 +155,7 @@ pub fn _rainbow_trees(excerpt: &mut WorldExcerpt) {
                 let coordinates = (x, y, z).into();
 
                 let tree = find_tree(excerpt, &coordinates);
-                if tree.len() > 0 {
+                if !tree.is_empty() {
                     // Found a tree!
                     let tree_id = tree_id_counter.next().unwrap();
 
@@ -282,7 +282,7 @@ fn find_tree(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<BlockCoord> {
             // Add the neighbours of logs (but not the logs themselves) to the search queue,
             // along with node info
             for coordinates in &log_coordinates {
-                for neighbour_coordinates in neighbours_26(&coordinates) {
+                for neighbour_coordinates in neighbours_26(coordinates) {
                     if !to_search.contains(&neighbour_coordinates)
                         && !tree_block_collection.contains(&neighbour_coordinates)
                     {
@@ -377,7 +377,7 @@ fn find_tree(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<BlockCoord> {
             // Handle Vines
             let mut vines = HashSet::<BlockCoord>::new();
             for coordinates in &tree_block_collection {
-                for neighbour_coordinates in neighbours_4(&coordinates) {
+                for neighbour_coordinates in neighbours_4(coordinates) {
                     for y in (0..=neighbour_coordinates.1).rev() {
                         let block_coordinates =
                             (neighbour_coordinates.0, y, neighbour_coordinates.2).into();

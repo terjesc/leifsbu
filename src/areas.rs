@@ -48,7 +48,7 @@ impl Areas {
         invert(&mut flat_mask);
         //flat_mask.save("A-01b flat mask.png").unwrap();
         // * not full of trees
-        let mut forest_mask = Self::woodcutters(&features);
+        let mut forest_mask = Self::woodcutters(features);
         invert(&mut forest_mask);
         morphology::dilate_mut(&mut forest_mask, Norm::LInf, 5u8);
         //distance_transform_mut(&mut forest_mask, Norm::LInf);

@@ -144,26 +144,26 @@ impl Plot {
                         IntersectionPoints::None | IntersectionPoints::Two(_, _) => {
                             // No intersection, or still not completely crossed the split line.
                             // Continue with the first plot.
-                            edges_0.push(edge.clone())
+                            edges_0.push(*edge)
                         }
                         IntersectionPoints::One(coordinates) => {
                             if coordinates == edge_segment.1 {
                                 // Reached the split line, but not crossed yet.
-                                edges_0.push(edge.clone());
+                                edges_0.push(*edge);
                             } else if coordinates == edge_segment.0 {
                                 // Left the split line. Have crossed if the edge endpoint
                                 // is not on the plot 0 side.
                                 let edge_endpoint_side = geometry::point_position_relative_to_line(
-                                    edge_segment.1.into(),
+                                    edge_segment.1,
                                     *split_line,
                                 );
 
                                 if edge_endpoint_side == plot_0_side {
                                     // Still on plot 0
-                                    edges_0.push(edge.clone());
+                                    edges_0.push(*edge);
                                 } else {
                                     // Crossed over to plot 1
-                                    edges_1.push(edge.clone());
+                                    edges_1.push(*edge);
                                     state = State::SecondPlot;
                                 }
                             } else {
@@ -198,23 +198,23 @@ impl Plot {
                         IntersectionPoints::None | IntersectionPoints::Two(_, _) => {
                             // No intersection, or still not completely crossed the split line.
                             // Continue with the first plot.
-                            edges_1.push(edge.clone())
+                            edges_1.push(*edge)
                         }
                         IntersectionPoints::One(coordinates) => {
                             if coordinates == edge_segment.1 {
                                 // Reached the split line, but not crossed yet.
-                                edges_1.push(edge.clone());
+                                edges_1.push(*edge);
                             } else if coordinates == edge_segment.0 {
                                 // Left the split line. Have crossed if the edge endpoint
                                 // is not on the plot 0 side.
                                 let edge_endpoint_side = geometry::point_position_relative_to_line(
-                                    edge_segment.1.into(),
+                                    edge_segment.1,
                                     *split_line,
                                 );
 
                                 if edge_endpoint_side == plot_1_side {
                                     // Still on plot 1
-                                    edges_1.push(edge.clone());
+                                    edges_1.push(*edge);
                                 } else {
                                     // Crossed over to plot 0
                                     // Add new edges along the split line.
@@ -227,7 +227,7 @@ impl Plot {
                                         points: (edges_1[0].points.0, edge.points.0),
                                     });
                                     // Add edge to plot 0
-                                    edges_0.push(edge.clone());
+                                    edges_0.push(*edge);
                                     state = State::FinalFirstPlot;
                                 }
                             } else {
@@ -266,7 +266,7 @@ impl Plot {
                 }
                 State::FinalFirstPlot => {
                     // Add to edges_0
-                    edges_0.push(edge.clone());
+                    edges_0.push(*edge);
                 }
             }
         }
@@ -276,10 +276,7 @@ impl Plot {
 
     pub fn has_access(&self) -> bool {
         for edge in &self.edges {
-            match edge.kind {
-                PlotEdgeKind::Road { .. } => return true,
-                _ => (),
-            }
+            if let PlotEdgeKind::Road { .. } = edge.kind { return true }
         }
         false
     }
@@ -303,7 +300,7 @@ impl Plot {
 }
 
 pub fn divide_city_block(
-    city_block: &Vec<BlockColumnCoord>,
+    city_block: &[BlockColumnCoord],
     land_usage: &LandUsageGraph,
 ) -> Vec<Plot> {
     let plot = land_usage.plot_from_area(city_block);

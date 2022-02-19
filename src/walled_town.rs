@@ -159,7 +159,7 @@ fn walled_town_contour_internal(
     //save_snake_image(&snake, &map_img, &"acm_000.png".to_string());
 
     for iteration in 1..=100 {
-        let (s, _energy) = active_contour_model(snake.clone(), &costs, ALPHA, BETA, GAMMA, INFLATE);
+        let (s, _energy) = active_contour_model(snake.clone(), costs, ALPHA, BETA, GAMMA, INFLATE);
 
         /*
         if iteration == 1 {
@@ -202,9 +202,9 @@ pub fn draw_snake(image: &mut RgbImage, snake: &Snake) {
 }
 
 // Print a snake superimposed on an image
-pub fn save_snake_image(snake: &Snake, image: &RgbImage, path: &String) {
+pub fn save_snake_image(snake: &Snake, image: &RgbImage, path: &str) {
     let mut image = image.clone();
-    draw_snake(&mut image, &snake);
+    draw_snake(&mut image, snake);
     image.save(path).unwrap();
 }
 
@@ -309,7 +309,7 @@ fn active_contour_model(
         let mut best_energy = f32::MAX;
         for point in neighbourhood(snake_point, image_costs.dimensions()) {
             let energy = internal_energy((alpha, beta, inflate), &snake, index, point)
-                + external_energy(gamma, &image_costs, point);
+                + external_energy(gamma, image_costs, point);
             if energy < best_energy {
                 best_energy = energy;
                 new_snake[index] = point;

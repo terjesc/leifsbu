@@ -53,15 +53,12 @@ pub fn point_position_relative_to_polygon(
             } else {
                 winding_number
             }
+        } else if line[1].1 <= point.1
+            && LeftRightSide::Right == point_position_relative_to_line(point, (line[0], line[1]))
+        {
+            winding_number - 1
         } else {
-            if line[1].1 <= point.1
-                && LeftRightSide::Right
-                    == point_position_relative_to_line(point, (line[0], line[1]))
-            {
-                winding_number - 1
-            } else {
-                winding_number
-            }
+            winding_number
         }
     });
 
@@ -105,7 +102,7 @@ impl LandUsageGraph {
         }
     }
 
-    pub fn plot_from_area(&self, area: &Vec<BlockColumnCoord>) -> Plot {
+    pub fn plot_from_area(&self, area: &[BlockColumnCoord]) -> Plot {
         let mut edges = Vec::new();
 
         for edge in area.windows(2) {
@@ -149,15 +146,15 @@ impl LandUsageGraph {
     }
 
     /// Add roads to the land usage graph, of the given kind and width.
-    pub fn add_roads(&mut self, roads: &Vec<RoadPath>, kind: EdgeKind, width: i64) {
+    pub fn add_roads(&mut self, roads: &[RoadPath], kind: EdgeKind, width: i64) {
         for road in roads {
             for segment in road.windows(2) {
                 let p0 = segment[0].coordinates.into();
                 let p1 = segment[1].coordinates.into();
 
                 // Add edges
-                self.edges.entry(p0).or_insert(Vec::new()).push(p1);
-                self.edges.entry(p1).or_insert(Vec::new()).push(p0);
+                self.edges.entry(p0).or_insert_with(Vec::new).push(p1);
+                self.edges.entry(p1).or_insert_with(Vec::new).push(p0);
                 let meta = EdgeMeta { kind, width };
                 self.edge_meta.insert((p0, p1), meta);
                 self.edge_meta.insert((p1, p0), meta);
@@ -186,7 +183,7 @@ impl LandUsageGraph {
             let p1 = segment[1];
 
             // Add edges
-            self.edges.entry(p0).or_insert(Vec::new()).push(p1);
+            self.edges.entry(p0).or_insert_with(Vec::new).push(p1);
             self.edge_meta.insert((p0, p1), EdgeMeta { kind, width });
 
             // Add vertices
@@ -341,8 +338,7 @@ pub fn add_intersection_points(roads: &mut Vec<RoadPath>, snake: &mut Snake) {
     let mut new_roads = Vec::new();
 
     for road in roads.iter() {
-        let mut new_road = Vec::new();
-        new_road.push(road[0]);
+        let mut new_road = vec![road[0]];
 
         for road_segment in road.windows(2) {
             for snake_segment in snake.windows(2) {
@@ -375,7 +371,7 @@ pub fn add_intersection_points(roads: &mut Vec<RoadPath>, snake: &mut Snake) {
                         } else {
                             snake_extra_points
                                 .entry(snake_segment)
-                                .or_insert(Vec::new())
+                                .or_insert_with(Vec::new)
                                 .push(p);
                         }
                     }
@@ -389,8 +385,7 @@ pub fn add_intersection_points(roads: &mut Vec<RoadPath>, snake: &mut Snake) {
     *roads = new_roads;
 
     // Then, handle the snake
-    let mut new_snake = Vec::new();
-    new_snake.push(*snake.first().unwrap());
+    let mut new_snake = vec![*snake.first().unwrap()];
 
     for segment in snake.windows(2) {
         match snake_extra_points.get(&(segment[0], segment[1])) {
@@ -506,7 +501,7 @@ pub fn area(polygon: &[BlockColumnCoord]) -> i64 {
 
 pub fn draw_area(
     image: &mut GrayImage,
-    area: &Vec<BlockColumnCoord>,
+    area: &[BlockColumnCoord],
     offset: BlockColumnCoord,
     colour: image::Luma<u8>,
 ) {
@@ -517,7 +512,7 @@ pub fn draw_area(
             if InOutSide::Inside
                 == point_position_relative_to_polygon(
                     BlockColumnCoord(x as i64, z as i64) + offset,
-                    &area,
+                    area,
                 )
             {
                 image.put_pixel(x, z, colour);

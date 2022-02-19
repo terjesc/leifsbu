@@ -23,7 +23,7 @@ struct Road {
 /// by splitting each road into the parts outside and inside of the given polygon,
 /// and putting all inside roads in the first item of the output and all outside
 /// roads in the last item of the output.
-pub fn roads_split(roads: &Vec<RoadPath>, polygon: &Snake) -> (Vec<RoadPath>, Vec<RoadPath>) {
+pub fn roads_split(roads: &[RoadPath], polygon: &Snake) -> (Vec<RoadPath>, Vec<RoadPath>) {
     let mut inside = Vec::new();
     let mut outside = Vec::new();
 
@@ -64,9 +64,7 @@ fn road_split(road: &RoadPath, polygon: &Snake) -> (Vec<RoadPath>, Vec<RoadPath>
             } else if !previous_was_inside {
                 // The new accumulator is inside, and should contain both the previous node
                 // and the current node. (The transition edge is part of the inside.)
-                let mut new_acc = Vec::new();
-                new_acc.push(*acc.last().unwrap());
-                new_acc.push(*node);
+                let mut new_acc = vec![*acc.last().unwrap(), *node];
 
                 // The current accumulator is outside, and should not contain the current node.
                 outside.push(acc);
@@ -74,8 +72,7 @@ fn road_split(road: &RoadPath, polygon: &Snake) -> (Vec<RoadPath>, Vec<RoadPath>
                 (is_inside, new_acc)
             } else {
                 // The new accumulator is outside, and should contain the current node only.
-                let mut new_acc = Vec::new();
-                new_acc.push(*node);
+                let mut new_acc = vec![*node];
 
                 // The current accumulator is inside, and should contain the current node.
                 // (The transition edge is part of the inside.)

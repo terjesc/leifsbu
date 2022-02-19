@@ -18,42 +18,27 @@ pub enum AreaDesignation {
 
 impl AreaDesignation {
     pub fn is_irrelevant(&self) -> bool {
-        match self {
-            AreaDesignation::Irrelevant(_) => true,
-            _ => false,
-        }
+        matches!(self, AreaDesignation::Irrelevant(_))
     }
 
     pub fn is_plot(&self) -> bool {
-        match self {
-            AreaDesignation::Plot(_) => true,
-            _ => false,
-        }
+        matches!(self, AreaDesignation::Plot(_))
     }
 
     pub fn is_road(&self) -> bool {
-        match self {
-            AreaDesignation::Road(_) => true,
-            _ => false,
-        }
+        matches!(self, AreaDesignation::Road(_))
     }
 
     pub fn is_wall(&self) -> bool {
-        match self {
-            AreaDesignation::Wall(_) => true,
-            _ => false,
-        }
+        matches!(self, AreaDesignation::Wall(_))
     }
 
     /// True if all blocks covered by this designation can be modified.
     pub fn is_buildable(&self) -> bool {
-        match self {
-            Self::Irrelevant(BuildRights::Buildable)
+        matches!(self, Self::Irrelevant(BuildRights::Buildable)
             | Self::Plot(BuildRights::Buildable)
             | Self::Road(BuildRights::Buildable)
-            | Self::Wall(BuildRights::Buildable) => true,
-            _ => false,
-        }
+            | Self::Wall(BuildRights::Buildable))
     }
 
     /// True if air blocks covered by this designation can be modified,
@@ -70,13 +55,10 @@ impl AreaDesignation {
 
     /// True if modification is not allowed for any blocks covered by this designation.
     pub fn is_forbidden(&self) -> bool {
-        match self {
-            Self::Irrelevant(BuildRights::Forbidden)
+        matches!(self, Self::Irrelevant(BuildRights::Forbidden)
             | Self::Plot(BuildRights::Forbidden)
             | Self::Road(BuildRights::Forbidden)
-            | Self::Wall(BuildRights::Forbidden) => true,
-            _ => false,
-        }
+            | Self::Wall(BuildRights::Forbidden))
     }
 }
 
@@ -218,11 +200,7 @@ impl BuildArea {
 
     /// Get the designation at the (x, z) location `coordinates`.
     pub fn designation_at(&self, coordinates: (usize, usize)) -> Option<AreaDesignation> {
-        if let Some(index) = self.index(coordinates) {
-            Some(*self.designations.get(index).unwrap())
-        } else {
-            None
-        }
+        self.index(coordinates).map(|index| *self.designations.get(index).unwrap())
     }
 
     /// Returns all locations that are buildable.

@@ -104,29 +104,28 @@ pub fn road_path(
     };
 
     let support_cost = |node: &RoadNode| -> u64 {
-        let cost = match node.kind {
+        match node.kind {
             RoadNodeKind::WoodenSupport => {
                 (node.coordinates.1
                     - get_terrain_height(node.coordinates.0, node.coordinates.2).unwrap()
-                    + 1)
-                    * WOODEN_SUPPORT_COST
+                    + 1) as u64
+                    * WOODEN_SUPPORT_COST as u64
             }
             RoadNodeKind::StoneSupport => {
                 (node.coordinates.1
                     - get_terrain_height(node.coordinates.0, node.coordinates.2).unwrap()
-                    + 1)
-                    * STONE_SUPPORT_COST
+                    + 1) as u64
+                    * STONE_SUPPORT_COST as u64
             }
-            _ => 0,
-        } as u64;
-        cost
+            _ => 0u64,
+        }
     };
 
     // Calculate the cost between two given road nodes.
     let cost = |a: &RoadNode, b: &RoadNode| -> u64 {
         stretched_euclidean_distance(&a.coordinates, &b.coordinates)
-            + support_cost(&a)
-            + support_cost(&b)
+            + support_cost(a)
+            + support_cost(b)
     };
 
     let is_ground_blocked = |x: i64, z: i64| -> bool {
@@ -146,6 +145,7 @@ pub fn road_path(
             RoadNodeKind::Start => {
                 // NB when adding directionality, start must create nodes in all directions
                 if let Some(terrain_height) = get_terrain_height(x, z) {
+                    #[allow(clippy::if_same_then_else)]
                     if terrain_height == y {
                         // On ground
                         neighbours.push(RoadNode {
@@ -170,7 +170,7 @@ pub fn road_path(
                     } else if terrain_height > (y + CUT_DEPTH_MAX) {
                         // Tunnel
                     } else { // Terrain barely higher than node
-                         // Cut
+                        // Cut
                     }
                 }
             }
@@ -258,7 +258,7 @@ pub fn road_path(
 
     // Calculates neighbours and cost of traveling to neighbours, for A* algorithm
     let successors = |node: &RoadNode| -> Vec<(RoadNode, u64)> {
-        neighbours(&node)
+        neighbours(node)
             .into_iter()
             .map(|n| (n, cost(node, &n)))
             .collect()

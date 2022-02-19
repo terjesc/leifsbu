@@ -28,7 +28,7 @@ fn line_internal(
     }
 
     let mut line = Vec::with_capacity(
-        ((diagonal_distance(&p0, p1) + 1) * (width + 1)) as usize
+        ((diagonal_distance(p0, p1) + 1) * (width + 1)) as usize
     );
 
     // Use fixed point with given precision from here on
@@ -78,11 +78,11 @@ fn line_internal(
 }
 
 fn sparse_line(p0: &BlockCoord, p1: &BlockCoord, step_size: i64) -> Vec<BlockCoord> {
-    let n = diagonal_distance(&p0, &p1) / step_size;
+    let n = diagonal_distance(p0, p1) / step_size;
     let mut points = Vec::with_capacity(n as usize + 1);
 
     for step in 0..=n {
-        points.push(lerp_point(&p0, &p1, step, n));
+        points.push(lerp_point(p0, p1, step, n));
     }
 
     points
@@ -91,7 +91,7 @@ fn sparse_line(p0: &BlockCoord, p1: &BlockCoord, step_size: i64) -> Vec<BlockCoo
 // Line function and sub-functions ported from JavaScript examples on
 // https://www.redblobgames.com/grids/line-drawing.html
 pub fn narrow_line(p0: &BlockCoord, p1: &BlockCoord) -> Vec<BlockCoord> {
-    let n = diagonal_distance(&p0, &p1);
+    let n = diagonal_distance(p0, p1);
     let mut points = Vec::with_capacity(n as usize + 1);
 
     for step in 0..=n {
