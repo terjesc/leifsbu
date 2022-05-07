@@ -5,7 +5,8 @@ use image::imageops::*;
 use imageproc::*;
 use imageproc::distance_transform::Norm;
 
-const TOWN_FLATNESS_TRESHOLD: u8 = 56;
+//const TOWN_FLATNESS_TRESHOLD: u8 = 56;
+const TOWN_FLATNESS_TRESHOLD: u8 = 64;
 const TOWN_DISTANCE_INTO_WATER: u8 = 2;
 const WOOD_CONNECTEDNESS_TRESHOLD: u8 = 5;
 
@@ -47,10 +48,14 @@ impl Areas {
         let mut flat_mask = contrast::threshold(&features.scharr, TOWN_FLATNESS_TRESHOLD);
         invert(&mut flat_mask);
         //flat_mask.save("A-01b flat mask.png").unwrap();
+
         // * not full of trees
+        /* Uncomment this code for avoiding building cities on forests.
         let mut forest_mask = Self::woodcutters(features);
         invert(&mut forest_mask);
         morphology::dilate_mut(&mut forest_mask, Norm::LInf, 5u8);
+        */
+
         //distance_transform_mut(&mut forest_mask, Norm::LInf);
         //threshold_mut(&mut forest_mask, 6u8);
         //invert(&mut forest_mask);
@@ -63,12 +68,15 @@ impl Areas {
             for z in 0..z_len as u32 {
                 if image::Luma([255u8]) == land_mask[(x, z)]
                 && image::Luma([255u8]) == flat_mask[(x, z)]
-                && image::Luma([255u8]) == forest_mask[(x, z)] {
+                //&& image::Luma([255u8]) == forest_mask[(x, z)] // Uncomment for avoiding building cities on forests.
+                {
                     town.put_pixel(x, z, image::Luma([255u8]));
                 }
             }
         }
-        //town.save("A-01 town.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        town.save("A-01 town.png").unwrap();
 
         town
     }
@@ -85,7 +93,9 @@ impl Areas {
             Norm::L1,
             2 * WOOD_CONNECTEDNESS_TRESHOLD,
         );
-        //woodcutters.save("A-02 woodcutters.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        woodcutters.save("A-02 woodcutters.png").unwrap();
 
         woodcutters
     }
@@ -99,7 +109,9 @@ impl Areas {
 
         let (x_len, z_len) = features.dimensions();
         let agriculture = image::ImageBuffer::new(x_len as u32, z_len as u32);
-        //agriculture.save("A-03 agriculture.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        agriculture.save("A-03 agriculture.png").unwrap();
 
         agriculture
     }

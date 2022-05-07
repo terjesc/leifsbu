@@ -141,9 +141,12 @@ impl Features {
         let edge_img = image::imageops::filter3x3(&edge_img, &gauss);
         let edge_img = image::imageops::filter3x3(&edge_img, &gauss);
         let edge_img = image::imageops::filter3x3(&edge_img, &edge);
-        //horizontal_img.save("04a horizontal sobel.png").unwrap();
-        //vertical_img.save("04b vertical sobel.png").unwrap();
-        //edge_img.save("04c edge.png").unwrap();
+
+
+        // TODO Save only if debug images is enabled
+        horizontal_img.save("04a horizontal sobel.png").unwrap();
+        vertical_img.save("04b vertical sobel.png").unwrap();
+        edge_img.save("04c edge.png").unwrap();
 
         // Full Sobel
         let mut sobel_relief = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -162,7 +165,9 @@ impl Features {
                 sobel_relief.put_pixel(x, z, image::Luma([value]));
             }
         }
-        //sobel_relief.save("04d sobel.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        sobel_relief.save("04d sobel.png").unwrap();
 
         // Full Scharr
         let horizontal_img = image::imageops::filter3x3(&terrain, &horizontal_scharr);
@@ -184,7 +189,9 @@ impl Features {
                 scharr.put_pixel(x, z, image::Luma([value as u8]));
             }
         }
-        //scharr.save("04e scharr.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        scharr.save("04e scharr.png").unwrap();
 
         // Hilltops (double scharr)
         const THRESHOLD: u8 = 9;
@@ -220,7 +227,9 @@ impl Features {
                 image::Luma([p[0].saturating_sub(q[0])])
             },
         );
-        //hilltop.save("04f hilltop.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        hilltop.save("04f hilltop.png").unwrap();
 
         // scharr with low values removed
         let mut scharr_cleaned = scharr.clone();
@@ -233,7 +242,9 @@ impl Features {
                 }
             }
         }
-        //scharr_cleaned.save("04f scharr cleaned.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        scharr_cleaned.save("04f scharr cleaned.png").unwrap();
 
         // Various features
         let mut water = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -274,11 +285,12 @@ impl Features {
             }
         }
 
-        //water.save("05a water.png").unwrap();
-        //fertile.save("05b fertile land.png").unwrap();
-        //sand.save("05c sand.png").unwrap();
-        //gravel.save("05d gravel.png").unwrap();
-        //exposed_ore.save("05e exposed ore.png").unwrap();
+        // TODO Save only if debug images is enabled
+        water.save("05a water.png").unwrap();
+        fertile.save("05b fertile land.png").unwrap();
+        sand.save("05c sand.png").unwrap();
+        gravel.save("05d gravel.png").unwrap();
+        exposed_ore.save("05e exposed ore.png").unwrap();
 
         // Forests
         let mut forest = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -294,7 +306,9 @@ impl Features {
                 }
             }
         }
-        //forest.save("05f forest.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        forest.save("05f forest.png").unwrap();
 
         // Water depth
         let mut water_depth = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -312,7 +326,9 @@ impl Features {
                 }
             }
         }
-        //water_depth.save("06 water depth.png").unwrap();
+
+        // TODO Save only if debug images is enabled
+        water_depth.save("06 water depth.png").unwrap();
 
         Self {
             // Height maps

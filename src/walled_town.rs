@@ -1,6 +1,8 @@
 use std::cmp::{max, min};
 use std::f32::consts::TAU;
 
+use log::warn;
+
 use image::imageops::colorops::invert;
 use image::{GrayImage, RgbImage};
 use imageproc::contrast::*;
@@ -19,9 +21,18 @@ use crate::Features;
 pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockColumnCoord) {
     let mut not_town = areas.town.clone();
     invert(&mut not_town);
-    //not_town.save("T-01 not town.png").unwrap();
 
     let (x_len, z_len) = not_town.dimensions();
+
+    // Edges of map not suited for town.
+    imageproc::drawing::draw_hollow_rect_mut(
+        &mut not_town,
+        imageproc::rect::Rect::at(2, 2).of_size(x_len - 4, z_len - 4),
+        image::Luma([u8::MAX])
+    );
+
+    // TODO Save only if debug images is enabled
+    not_town.save("T-01 not town.png").unwrap();
 
     // Mask for town circumference start circle
     // Energy map for finding town circumference
@@ -36,9 +47,11 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     let water_depth_energy = map_colors(&water_depth_energy, |p| {
         image::Luma([p[0].saturating_mul(p[0])])
     });
-    //water_depth_energy
-    //    .save("T-04 water depth energy.png")
-    //    .unwrap();
+
+    // TODO Save only if debug images is enabled
+    water_depth_energy
+        .save("T-04 water depth energy.png")
+        .unwrap();
 
     // Distance from shore -> penalty
     // TODO Maybe start the penalty a few blocks ashore?
@@ -48,15 +61,22 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     let offshore_distance_energy = map_colors(&offshore_distance_energy, |p| {
         image::Luma([p[0].saturating_mul(4)])
     });
-    //offshore_distance_energy
-    //    .save("T-05 offshore distance energy.png")
-    //    .unwrap();
+
+    // TODO Save only if debug images is enabled
+    offshore_distance_energy
+        .save("T-05 offshore distance energy.png")
+        .unwrap();
 
     // Steep terrain -> penalty
     let mut slope_energy = features.scharr.clone();
+    // TODO Figure out if slope level and hilltops could be better tuned for the Active Contour
+    // Model (ACM). This includes checking if 16u8 is the best threshold here, as well as figuring
+    // out if features.rs scharr_cleaned THRESHOLD should be changed, and/or other changes.
     threshold_mut(&mut slope_energy, 16u8);
     close_mut(&mut slope_energy, Norm::LInf, 3);
-    //slope_energy.save("T-07 slope energy.png").unwrap();
+
+    // TODO Save only if debug images is enabled
+    slope_energy.save("T-07 slope energy.png").unwrap();
 
     let mut energy = image::ImageBuffer::new(x_len as u32, z_len as u32);
     for x in 0..x_len {
@@ -72,14 +92,24 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
         }
     }
     const NEUTRAL_ENERGY: u8 = u8::MAX / 2;
-    let energy = imageproc::map::map_colors2(&energy, &features.hilltop, |p, q| {
+    let mut energy = imageproc::map::map_colors2(&energy, &features.hilltop, |p, q| {
         image::Luma([p[0].saturating_add(NEUTRAL_ENERGY).saturating_sub(q[0])])
     });
-    //energy.save("T-10 energy.png").unwrap();
+
+    // Keep away from the edges of the map
+    let (width, height) = energy.dimensions();
+    imageproc::drawing::draw_hollow_rect_mut(&mut energy, imageproc::rect::Rect::at(0, 0).of_size(width, height) , image::Luma([u8::MAX]));
+    imageproc::drawing::draw_hollow_rect_mut(&mut energy, imageproc::rect::Rect::at(1, 1).of_size(width - 2, height - 2) , image::Luma([u8::MAX]));
+    imageproc::drawing::draw_hollow_rect_mut(&mut energy, imageproc::rect::Rect::at(2, 2).of_size(width - 4, height - 4) , image::Luma([u8::MIN]));
+
+    // TODO Save only if debug images is enabled
+    energy.save("T-10 energy.png").unwrap();
 
     // map of distance from (potential) town edge
     let town_density = distance_transform(&threshold(&energy, NEUTRAL_ENERGY), Norm::LInf);
-    //town_density.save("T-02 town density.png").unwrap();
+
+    // TODO Save only if debug images is enabled
+    town_density.save("T-02 town density.png").unwrap();
 
     // points the farthest away from (potential) town edge are potential town centers.
     let mut town_centers = suppress_non_maximum(&town_density, 8);
@@ -106,7 +136,19 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     town_center_list.sort_by(|a, b| b.partial_cmp(a).unwrap());
 
     threshold_mut(&mut town_centers, 0u8);
-    //town_centers.save("T-03 town centers.png").unwrap();
+
+    // Put in circles for towns
+    for TownCenterPoint { radius, point } in &town_center_list {
+        imageproc::drawing::draw_hollow_circle_mut(
+            &mut town_centers,
+            (point.0 as i32, point.1 as i32),
+            *radius as i32,
+            image::Luma([127u8]),
+        );
+    }
+
+    // TODO Save only if debug images is enabled
+    town_centers.save("T-03 town centers.png").unwrap();
 
     // TODO Maybe calculate and rate the N most promising locations?
     //      For now: Use the one the farthest away from "non-suitable" features/areas.
@@ -156,12 +198,15 @@ fn walled_town_contour_internal(
 
     let num_points = radius as usize * 2;
     let mut snake = circle_snake(num_points, radius as usize, center, max);
-    //save_snake_image(&snake, &map_img, &"acm_000.png".to_string());
+
+    // TODO Save only if debug images is enabled
+    save_snake_image(&snake, &map_img, &"acm_000.png".to_string());
 
     for iteration in 1..=100 {
         let (s, _energy) = active_contour_model(snake.clone(), costs, ALPHA, BETA, GAMMA, INFLATE);
 
-        /*
+//        /*
+        // TODO Save only if debug images is enabled
         if iteration == 1 {
             save_snake_image(&snake, &map_img, &"acm_001.png".to_string());
         } else if iteration % 10 == 0 {
@@ -169,7 +214,7 @@ fn walled_town_contour_internal(
             save_snake_image(&snake, &map_img, &file_name);
             println!("Saved {}", file_name);
         }
-        */
+//        */
 
         snake = s;
     }
@@ -231,8 +276,8 @@ fn active_contour_model(
 
         let BlockColumnCoord(x, y) = point;
         let mut neighbourhood = Vec::with_capacity(9);
-        for x in x.saturating_sub(RADIUS)..=min(x + RADIUS, x_len as i64 - 1) {
-            for y in y.saturating_sub(RADIUS)..=min(y + RADIUS, y_len as i64 - 1) {
+        for x in max(0, x - RADIUS)..=min(x + RADIUS, x_len as i64 - 1) {
+            for y in max(0, y - RADIUS)..=min(y + RADIUS, y_len as i64 - 1) {
                 neighbourhood.push((x, y).into());
             }
         }

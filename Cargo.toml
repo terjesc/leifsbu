@@ -14,4 +14,6 @@ imageproc = "0.22.0"
 mcprogedit = { path = "../mcprogedit" }
 num-integer = "0.1"
 pathfinding = "2.1.4"
+log = "0.4"
+simple_logger = { version = "2.1", default-features = false, features = ["stderr"] }
 

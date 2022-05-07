@@ -23,6 +23,8 @@ use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use simple_logger::SimpleLogger;
+
 use imageproc::stats::histogram;
 use mcprogedit::block::{Block, Log};
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
@@ -39,6 +41,9 @@ use crate::road::roads_split;
 use crate::walled_town::*;
 
 fn main() {
+    // Initialize logging
+    SimpleLogger::new().init().unwrap();
+
     // Read arguments
     // **************
     let matches = matches();
@@ -155,7 +160,9 @@ fn main() {
             raw_roads.push(path);
         }
     }
-    //road_path_image.save("road_path_001.png").unwrap();
+
+    // TODO Save only if debug images is enabled
+    road_path_image.save("road_path_001.png").unwrap();
 
     // Split out the raw roads into city roads and country roads
     let (mut city_roads, country_roads) = roads_split(&raw_roads, &wall_circle);
@@ -197,7 +204,10 @@ fn main() {
             &BlockColumnCoord(0, 0),
             image::Luma([255u8]),
         );
-        //district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
+
+        // TODO Save only if debug images is enabled
+        district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
+
         println!("District {} has area {}.", colour, geometry::area(district));
     
         let stats = histogram(&district_image);
@@ -208,6 +218,8 @@ fn main() {
             colour, surface_area, border_area, surface_area + (border_area / 2)
         );
     }
+
+    // TODO Save only if debug images is enabled
     //district_image.save("D-01 districts.png").unwrap();
 
     // Split the city blocks
@@ -223,20 +235,18 @@ fn main() {
     for plot in &plots {
         plot.draw(&mut city_plan);
     }
-    /*
     for street in &streets {
         pathfinding::draw_road_path(&mut city_plan, street);
     }
-    */
     for road in &country_roads {
         pathfinding::draw_road_path(&mut city_plan, road);
     }
-    /*
     for road in &city_roads {
         pathfinding::draw_road_path(&mut city_plan, road);
     }
-    */
-    //city_plan.save("city plan.png").unwrap();
+
+    // TODO Save only if debug images is enabled
+    city_plan.save("city plan.png").unwrap();
 
 
     // Find local materials
