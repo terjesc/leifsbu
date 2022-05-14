@@ -182,6 +182,22 @@ fn circle_snake(
     snake
 }
 
+fn snake_with_duplicate_points_removed(snake: &Snake) -> Snake {
+    if snake.is_empty() {
+        return snake.clone();
+    }
+
+    let mut output: Snake = Vec::with_capacity(snake.len());
+    output.push(snake[0]);
+    for point in snake {
+        if point != output.last().unwrap() {
+            output.push(*point);
+        }
+    }
+
+    output
+}
+
 // Try to find a good walled town circumference
 fn walled_town_contour_internal(
     costs: &GrayImage,
@@ -219,7 +235,7 @@ fn walled_town_contour_internal(
         snake = s;
     }
 
-    snake
+    snake_with_duplicate_points_removed(&snake)
 }
 
 pub fn draw_snake(image: &mut RgbImage, snake: &Snake) {
