@@ -33,6 +33,7 @@ pub struct Features {
     pub gravel: GrayImage,
     pub exposed_ore: GrayImage,
     pub forest: GrayImage,
+    pub snow: GrayImage,
 }
 
 impl Features {
@@ -252,6 +253,7 @@ impl Features {
         let mut sand = image::ImageBuffer::new(x_len as u32, z_len as u32);
         let mut gravel = image::ImageBuffer::new(x_len as u32, z_len as u32);
         let mut exposed_ore = image::ImageBuffer::new(x_len as u32, z_len as u32);
+        let mut snow = image::ImageBuffer::new(x_len as u32, z_len as u32);
 
         for x in 0..x_len as u32 {
             for z in 0..z_len as u32 {
@@ -260,24 +262,34 @@ impl Features {
                     match block {
                         Block::WaterSource
                         | Block::Water { .. } => water.put_pixel(x, z, image::Luma([255u8])),
-                        _ => if let Some(block) = excerpt.block_at((x as i64, y as i64 - 1, z as i64).into()) {
+                        _ => {
                             match block {
-                                Block::CoarseDirt
-                                | Block::Dirt
-                                | Block::Farmland { .. }
-                                | Block::GrassBlock
-                                | Block::Podzol => fertile.put_pixel(x, z, image::Luma([255u8])),
-                                Block::RedSand
-                                | Block::Sand => sand.put_pixel(x, z, image::Luma([255u8])),
-                                Block::Gravel => gravel.put_pixel(x, z, image::Luma([255u8])),
-                                Block::CoalOre
-                                | Block::DiamondOre
-                                | Block::EmeraldOre
-                                | Block::GoldOre
-                                | Block::IronOre
-                                | Block::LapisLazuliOre
-                                | Block::RedstoneOre => exposed_ore.put_pixel(x, z, image::Luma([255u8])),
+                                Block::Snow { .. }
+                                | Block::SnowBlock
+                                | Block::BlueIce
+                                | Block::FrostedIce
+                                | Block::Ice => snow.put_pixel(x, z, image::Luma([255u8])),
                                 _ => (),
+                            }
+                            if let Some(block) = excerpt.block_at((x as i64, y as i64 - 1, z as i64).into()) {
+                                match block {
+                                    Block::CoarseDirt
+                                    | Block::Dirt
+                                    | Block::Farmland { .. }
+                                    | Block::GrassBlock
+                                    | Block::Podzol => fertile.put_pixel(x, z, image::Luma([255u8])),
+                                    Block::RedSand
+                                    | Block::Sand => sand.put_pixel(x, z, image::Luma([255u8])),
+                                    Block::Gravel => gravel.put_pixel(x, z, image::Luma([255u8])),
+                                    Block::CoalOre
+                                    | Block::DiamondOre
+                                    | Block::EmeraldOre
+                                    | Block::GoldOre
+                                    | Block::IronOre
+                                    | Block::LapisLazuliOre
+                                    | Block::RedstoneOre => exposed_ore.put_pixel(x, z, image::Luma([255u8])),
+                                    _ => (),
+                                }
                             }
                         },
                     }
@@ -309,6 +321,7 @@ impl Features {
 
         // TODO Save only if debug images is enabled
         forest.save("05f forest.png").unwrap();
+        snow.save("05g snow.png").unwrap();
 
         // Water depth
         let mut water_depth = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -354,6 +367,7 @@ impl Features {
             gravel,
             exposed_ore,
             forest,
+            snow,
         }
     }
 }

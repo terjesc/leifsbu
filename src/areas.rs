@@ -9,11 +9,13 @@ use imageproc::distance_transform::Norm;
 const TOWN_FLATNESS_TRESHOLD: u8 = 64;
 const TOWN_DISTANCE_INTO_WATER: u8 = 2;
 const WOOD_CONNECTEDNESS_TRESHOLD: u8 = 5;
+const AGRICULTURE_FLATNESS_TRESHOLD: u8 = 32;
 
 pub struct Areas {
     pub town: GrayImage,
     pub woodcutters: GrayImage,
     pub _agriculture: GrayImage,
+    pub _agriculture_without_trees: GrayImage,
     //pub harbour: GrayImage,
     //pub mines: GrayImage,
     //pub fishers: GrayImage,
@@ -27,12 +29,13 @@ impl Areas {
     pub fn new_from_features(features: &Features) -> Self {
         let town = Self::town(features);
         let woodcutters = Self::woodcutters(features);
-        let _agriculture = Self::agriculture(features);
+        let (_agriculture, _agriculture_without_trees) = Self::agriculture(features);
 
         Self {
             town,
             woodcutters,
             _agriculture,
+            _agriculture_without_trees,
         }
     }
 
@@ -100,7 +103,7 @@ impl Areas {
         woodcutters
     }
 
-    fn agriculture(features: &Features) -> GrayImage {
+    fn agriculture(features: &Features) -> (GrayImage, GrayImage) {
         // Suitable area for "agriculture":
         // * fertile land
         // * not under water
@@ -108,11 +111,33 @@ impl Areas {
         // * not too steep
 
         let (x_len, z_len) = features.dimensions();
-        let agriculture = image::ImageBuffer::new(x_len as u32, z_len as u32);
+
+        let mut agriculture = features.fertile.clone();
+        let steep_mask = contrast::threshold(&features.scharr, AGRICULTURE_FLATNESS_TRESHOLD);
+
+        for x in 0..x_len as u32 {
+            for z in 0..z_len as u32 {
+                if image::Luma([255u8]) == steep_mask[(x, z)]
+                    || image::Luma([255u8]) == features.snow[(x, z)] {
+                    agriculture.put_pixel(x, z, image::Luma([0u8]));
+                }
+            }
+        }
+
+        let mut agriculture_without_trees = agriculture.clone();
+
+        for x in 0..x_len as u32 {
+            for z in 0..z_len as u32 {
+                if image::Luma([255u8]) == features.forest[(x, z)] {
+                    agriculture_without_trees.put_pixel(x, z, image::Luma([0u8]));
+                }
+            }
+        }
 
         // TODO Save only if debug images is enabled
         agriculture.save("A-03 agriculture.png").unwrap();
+        agriculture_without_trees.save("A-04 agriculture without trees.png").unwrap();
 
-        agriculture
+        (agriculture, agriculture_without_trees)
     }
 }
