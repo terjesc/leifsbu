@@ -11,6 +11,7 @@ use imageproc::morphology::*;
 use imageproc::region_labelling::{connected_components, Connectivity};
 use imageproc::stats::histogram;
 use imageproc::template_matching::{find_extremes, Extremes};
+use log::warn;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 use num_integer::Roots;
 use std::cmp::{max, min};
@@ -116,7 +117,7 @@ pub fn divide_town_into_blocks(
     const TOWN_BORDER_DISTANCE_TO_CLOSE_STREET: i64 =
         (STREET_HALF_WIDTH + TOWN_BORDER_HALF_WIDTH) as i64;
     const TOWN_BORDER_DISTANCE_TO_FAR_STREET: i64 =
-        (STREET_COVERAGE_RADIUS + TOWN_BORDER_HALF_WIDTH) as i64;
+        (STREET_COVERAGE_RADIUS + TOWN_BORDER_HALF_WIDTH - 1) as i64;
 
     const UNCOVERED_AREA_SIZE_THRESHOLD: u32 = 32;
 
@@ -354,11 +355,11 @@ pub fn divide_town_into_blocks(
 
         //  Find possible path close by wall
         let close_path = sub_snake(&street_close_to_border, &full_area_stencil, &offset);
-        let close_path = attach_to_road_system(&close_path, roads, 4f32);
+        let close_path = attach_to_road_system(&close_path, roads, 6f32);
 
         // Find possible path further from wall
         let far_path = sub_snake(&street_far_from_border, &full_area_stencil, &offset);
-        let far_path = attach_to_road_system(&far_path, roads, 4f32);
+        let far_path = attach_to_road_system(&far_path, roads, 6f32);
 
         // NB Only for making nice debug visuals...
         let mut wall_roads = image::ImageBuffer::new(dimensions.0 as u32, dimensions.1 as u32);
@@ -567,7 +568,7 @@ pub fn divide_town_into_blocks(
     }
 
     // TODO Save only if debug images is enabled
-    infrastructure.save("P-11 infrastructure.png").unwrap();
+    //infrastructure.save("P-11 infrastructure.png").unwrap();
 
     streets
 }
@@ -586,15 +587,21 @@ pub fn _divide_area_into_plots(
 fn attach_to_road_system(path: &Snake, attach_to: &[RoadPath], epsilon: f32) -> Snake {
     let mut path = path.clone();
 
-    if let Some(first_point) = path.first_mut() {
-        if let Some(new_point) = closest_road_point(attach_to, first_point, epsilon) {
-            *first_point = new_point;
+    if let Some(last_point) = path.last() {
+        if let Some(new_point) = closest_road_point(attach_to, last_point, epsilon) {
+            if *last_point != new_point {
+                path.push(new_point);
+            }
+        } else {
+            warn!("Could not attach last point.");
         }
     }
 
-    if let Some(last_point) = path.last_mut() {
-        if let Some(new_point) = closest_road_point(attach_to, last_point, epsilon) {
-            *last_point = new_point;
+    if let Some(first_point) = path.first_mut() {
+        if let Some(new_point) = closest_road_point(attach_to, first_point, epsilon) {
+            *first_point = new_point;
+        } else {
+            warn!("Could not attach first point.");
         }
     }
 

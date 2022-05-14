@@ -3,6 +3,8 @@ use crate::geometry::{IntersectionPoints, LandUsageGraph, RawEdge2d, RawEdge3d};
 use imageproc::drawing::draw_line_segment_mut;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 
+use log::{trace, warn};
+
 const PLOT_AREA_MIN: i64 = 40;
 const PLOT_AREA_MAX: i64 = 150;
 
@@ -32,12 +34,12 @@ impl Plot {
         if let Some(edge) = self.edges.first() {
             polygon.push(BlockColumnCoord::from(edge.points.0));
         } else {
-            println!("[warning] Plot has no edges.");
+            warn!("Plot has no edges.");
         }
 
         for edge in &self.edges {
             if polygon.last() != Some(&BlockColumnCoord::from(edge.points.0)) {
-                println!("[warning] Missing edge along plot circumference.");
+                warn!("Missing edge along plot circumference, from {:?} to {:?}.", polygon.last(), edge.points.0);
                 polygon.push(BlockColumnCoord::from(edge.points.0));
             }
             polygon.push(BlockColumnCoord::from(edge.points.1));
@@ -45,7 +47,7 @@ impl Plot {
 
         // Ensure that the polygon is a full circle
         if polygon.first() != polygon.last() {
-            println!("[warning] Missing edge at end of plot circumference.");
+            warn!("Missing edge at end of plot circumference, from {:?} to {:?}.", polygon.last(), polygon.first());
             polygon.push(*polygon.first().unwrap());
         }
 
@@ -113,19 +115,20 @@ impl Plot {
         let mut state = State::InitialFirstPlot;
 
         // Figure out what "side" each plot is on.
-        let plot_0_side = match geometry::point_position_relative_to_line(
-            self.edges[0].points.0.into(),
-            *split_line,
-        ) {
-            // NB picking Left if exactly on the split line, but this is probably
-            //    too naïve and going backwards through the edges until we reach
-            //    an actual side (and use that one) is probably better.
-            geometry::LeftRightSide::On => {
-                println!("[warning] Picking Left although Right may be better in this instance.");
-                geometry::LeftRightSide::Left
+        let mut plot_0_side = geometry::LeftRightSide::On;
+        for edge in &self.edges {
+            match geometry::point_position_relative_to_line(edge.points.0.into(), *split_line) {
+                geometry::LeftRightSide::On => continue,
+                side => {
+                    plot_0_side = side;
+                    break;
+                }
             }
-            side => side,
-        };
+        }
+        if geometry::LeftRightSide::On == plot_0_side {
+            warn!("Picking Left although Right may be better in this instance.");
+            plot_0_side = geometry::LeftRightSide::Left;
+        }
 
         let plot_1_side = match plot_0_side {
             geometry::LeftRightSide::Left => geometry::LeftRightSide::Right,
@@ -329,17 +332,17 @@ fn rec_subdiv_obb(plot: &Plot, area_bounds: (i64, i64)) -> Vec<Plot> {
 
     // Split the plot
     let (plot_1, plot_2) = {
-        //println!("Splitting along the short edge.");
+        trace!("Splitting along the short edge.");
         let (short_plot_1, short_plot_2) = plot.split(&short_edge);
         if short_plot_1.has_access() && short_plot_2.has_access() {
             (short_plot_1, short_plot_2)
         } else {
-            //println!("Splitting along the long edge instead.");
+            trace!("Splitting along the long edge instead.");
             let (long_plot_1, long_plot_2) = plot.split(&long_edge);
             if long_plot_1.has_access() && long_plot_2.has_access() {
                 (long_plot_1, long_plot_2)
             } else {
-                //println!("Couldn't keep road access. Aborting.");
+                trace!("Couldn't keep road access. Aborting.");
                 return vec![plot.clone()];
             }
         }
