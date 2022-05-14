@@ -7,6 +7,8 @@ use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::f32::consts::PI;
 
+use log::{warn, info};
+
 pub type RawEdge2d = (BlockColumnCoord, BlockColumnCoord);
 pub type RawEdge3d = (BlockCoord, BlockCoord);
 
@@ -415,6 +417,13 @@ pub fn intersection(edge_a: RawEdge2d, edge_b: RawEdge2d) -> IntersectionPoints 
     let (BlockColumnCoord(a_x1, a_y1), BlockColumnCoord(a_x2, a_y2)) = edge_a;
     let (BlockColumnCoord(b_x1, b_y1), BlockColumnCoord(b_x2, b_y2)) = edge_b;
 
+    // Skip if one of the lines is a point
+    if a_x1 == a_x2 && a_y1 == a_y2
+        || b_x1 == b_x2 && b_y1 == b_y2 {
+        info!("Intersection tests not performed: One or both lines is a single point.");
+        return IntersectionPoints::None;
+    }
+
     let (a1, b1) = (a_y2 - a_y1, a_x1 - a_x2);
     let c1 = a1 * a_x1 + b1 * a_y1;
     let (a2, b2) = (b_y2 - b_y1, b_x1 - b_x2);
@@ -448,6 +457,7 @@ pub fn intersection(edge_a: RawEdge2d, edge_b: RawEdge2d) -> IntersectionPoints 
                 IntersectionPoints::One(BlockColumnCoord(a_x2, a_y2))
             } else {
                 // No common points
+                warn!("Intersection tests not performed: Parallel lines may overlap: {:?} and {:?}.", edge_a, edge_b);
                 IntersectionPoints::None
             }
             // TODO When the lines are overlapping such that an end point of a is inside b,
