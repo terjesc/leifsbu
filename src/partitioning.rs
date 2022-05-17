@@ -109,7 +109,7 @@ pub fn divide_town_into_blocks(
     const ROAD_COVERAGE_RADIUS: u8 = 10;
     const _ROAD_HALF_WIDTH: u8 = 3;
 
-    const STREET_COVERAGE_RADIUS: u8 = 8;
+    const STREET_COVERAGE_RADIUS: u8 = 9; // 8
     const STREET_COVERAGE_FULL_WIDTH: u8 = 2 * (STREET_COVERAGE_RADIUS + STREET_HALF_WIDTH);
     const STREET_HALF_WIDTH: u8 = 2;
 
