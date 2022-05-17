@@ -392,6 +392,11 @@ fn main() {
             let mut custom_palette = block_palette.clone();
             if wood_available.is_empty() {
                 // Sadly no wood to use here.
+                // Replace some roofs with other materials
+                match index % 7 {
+                    0 | 2 | 4 => custom_palette.roof = custom_palette.floor.clone(),
+                    _ => (),
+                }
             } else if wood_available.len() == 1 {
                 // Replace most walls with the available wood
                 match index % 4 {
@@ -403,6 +408,11 @@ fn main() {
                     _ => {
                         custom_palette.floor = Block::Planks { material: wood_available[0] };
                     },
+                }
+                // Replace some roofs with other materials
+                match index % 7 {
+                    0 | 2 | 4 => custom_palette.roof = custom_palette.floor.clone(),
+                    _ => (),
                 }
             } else if wood_available.len() == 2 {
                 // Replace all roofs with one kind of wood.
@@ -417,6 +427,11 @@ fn main() {
                     _ => {
                         custom_palette.floor = Block::Planks { material: wood_available[1] };
                     },
+                }
+                // Replace some roofs with other materials
+                match index % 7 {
+                    0 | 2 | 4 => custom_palette.roof = custom_palette.floor.clone(),
+                    _ => (),
                 }
             } else {
                 // Replace all roofs with one kind of wood.
@@ -434,6 +449,12 @@ fn main() {
                     0 | 1 | 2 => {
                         custom_palette.floor = Block::Planks { material: wood_available[0] };
                     }
+                    _ => (),
+                }
+                // Replace some roofs with other materials
+                match index % 7 {
+                    0 | 4 => custom_palette.roof = custom_palette.floor.clone(),
+                    2 | 6 => custom_palette.roof = block_palette.roof.clone(),
                     _ => (),
                 }
             }
