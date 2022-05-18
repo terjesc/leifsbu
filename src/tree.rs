@@ -383,19 +383,37 @@ fn find_tree(excerpt: &WorldExcerpt, at: &BlockCoord) -> HashSet<BlockCoord> {
                             (neighbour_coordinates.0, y, neighbour_coordinates.2).into();
 
                         if tree_block_collection.contains(&block_coordinates) {
-                            break;
+                            continue;
                         }
 
                         match excerpt.block_at(block_coordinates) {
                             Some(Block::Vines(_)) => vines.insert(block_coordinates),
-                            _ => break,
+                            _ => continue,
                         };
                     }
                 }
             }
 
-            // TODO Handle mushrooms growing on trees. (Is that in swamp biomes only?)
-            tree_block_collection.union(&vines).cloned().collect()
+            // Handle mushrooms, snow
+            let mut on_top = HashSet::<BlockCoord>::new();
+            for coordinates in &tree_block_collection {
+                let above = *coordinates + (0, 1, 0).into();
+
+                if tree_block_collection.contains(&above) {
+                    continue;
+                }
+
+                match excerpt.block_at(above) {
+                    Some(Block::BrownMushroom)
+                    | Some(Block::RedMushroom)
+                    | Some(Block::Snow { .. }) => on_top.insert(above),
+                    _ => continue,
+                };
+            }
+
+            tree_block_collection
+                .union(&vines).cloned().collect::<HashSet<BlockCoord>>()
+                .union(&on_top).cloned().collect::<HashSet<BlockCoord>>()
         }
     }
 }
