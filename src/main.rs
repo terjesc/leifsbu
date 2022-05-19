@@ -110,20 +110,26 @@ fn main() {
     // TODO FUTURE WORK
     // - Find primary sector areas (agriculture, fishing, forestry, mining)
     // - Put major roads from primary sectors to town circumference
+    // - Actually, find more settlement locations as well,
+    //      and use some nice triangulation (e.g. Delaunay) for connecting everything.
 
     // Create road paths...
     // TODO refactor: Move the path generation somewhere else?
     // TODO to be replaced by other means of finding road start locations
-    let start_coordinates: Vec<_> = vec![
+    let mut start_coordinates = vec![
         // Paths from the four corners of the map
         (0, 0),
         (0, z_len - 1),
         (x_len - 1, z_len - 1),
         (x_len - 1, 0),
+    ];
+
+    if geometry::InOutSide::Outside == geometry::point_position_relative_to_polygon(player_location.clone(), &wall_circle) {
         // Path from the player start location
-        // TODO check if inside or outside town; if inside town, put a town square there instead.
-        (player_location.0, player_location.1),
-    ]
+        start_coordinates.push((player_location.0, player_location.1));
+    }
+
+    let start_coordinates: Vec<_> = start_coordinates
     .iter()
     .map(|(x, z)| {
         let image::Luma([y]) = features.terrain[(*x as u32, *z as u32)];
