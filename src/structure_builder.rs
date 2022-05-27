@@ -3,6 +3,7 @@ use crate::build_area::BuildArea;
 use crate::geometry;
 use crate::geometry::{RawEdge2d};
 use crate::line::line;
+use crate::room_interior::{ColumnKind, furnish_debug, RoomShape};
 
 use log::{trace, warn};
 use mcprogedit::block::{Block, Flower};
@@ -109,6 +110,10 @@ pub fn build_house(
     // Don't bother if the interior area of the building is less than 9 m²
     if buildable_interior.len() < 9 {
         trace!("Building would have less than 9 m² interior; aborting.");
+        return None;
+    // or larger than 100 m².
+    } else if buildable_interior.len() > 100 {
+        trace!("Building would have more than 100 m² interior; aborting.");
         return None;
     }
 
@@ -416,12 +421,46 @@ pub fn build_house(
         }
     }
 
-    // Place some flowers in suitable areas around the house.
-    // TODO For all buildable area around building.
-    // TODO With some probability.
-    // TODO If fertile ground: Plant flowers.
-    // TODO If non-fertile ground: Put down flower pots.
+    // Place interior
+    // For each floor
+    for y in &floor_levels {
+        // TODO Split into rooms if area is large.
 
+        // Prepare room shape structure
+        let mut room_shape = RoomShape::new((x_len, z_len));
+        for coordinates in &buildable_interior {
+            room_shape.set_column_kind_at(*coordinates, ColumnKind::Floor);
+        }
+        for coordinates in &interior_neighbours {
+            room_shape.set_column_kind_at(*coordinates, ColumnKind::Wall);
+        }
+        possible_window_coordinates.iter()
+            .filter(|block_coordinates| { block_coordinates.1 == y + 2 })
+            .for_each(|block_coordinates| {
+                trace!("Adding {:?} to window list.", block_coordinates);
+                room_shape.set_column_kind_at(
+                    (block_coordinates.0 as usize, block_coordinates.2 as usize),
+                    ColumnKind::Window,
+                ); });
+        for door_placement in &door_positions {
+            if door_placement.height as i64 == y + 1 {
+                room_shape.set_column_kind_at(door_placement.coordinates, ColumnKind::Door);
+            }
+        }
+
+        // TODO Call debug function for furnishing (putting down diagnostic carpets)
+        if let Some(interior) = furnish_debug(&room_shape) {
+        // TODO paste into plot excerpt
+            output.paste(BlockCoord(0, *y + 1, 0), &interior);
+        }
+    }
+
+    // TODO Call function for furnishing "cottage"
+    //      (for now, later there might be multiple functions depending on plot size
+    //      and/or other factors.)
+    // TODO Copy the blocks from the WorldExcerpt returned from the furnishing function, into output.
+
+    // Place some flowers in suitable areas around the house.
     let outside_area: HashSet<(usize, usize)> = road_along_buildable
         .union(&buildable).cloned().collect::<HashSet<(usize, usize)>>()
         .difference(&buildable_interior).cloned().collect::<HashSet<(usize, usize)>>()
@@ -485,65 +524,6 @@ pub fn build_house(
             }
         }
     }
-
-    /*
-    if !palette.flowers.is_empty() {
-        for (index, (x, z)) in road_along_buildable.iter().enumerate(){
-            // Don't put anything down most of the time.
-            if index % 3 != 0 {
-                continue;
-            }
-
-            let terrain_y = height_map.height_at((*x, *z)).unwrap();
-
-            let ground_location = BlockCoord(*x as i64, terrain_y as i64 - 1, *z as i64);
-            let first_block = ground_location + BlockCoord(0, 1, 0);
-            let second_block = ground_location + BlockCoord(0, 2, 0);
-
-            // Do not put detailing down if something else has been put there before
-            if output.block_at(ground_location) != Some(&Block::None)
-            || output.block_at(first_block) != Some(&Block::None)
-            || output.block_at(second_block) != Some(&Block::None)
-            {
-                continue;
-            }
-
-            match excerpt.block_at(ground_location) {
-                Some(Block::GrassBlock) => {
-                    let flower_index = index % max(8, palette.flowers.len() + 2);
-                    if flower_index < palette.flowers.len() {
-                        // Below flower
-                        match index % 3 {
-                            0 | 1 => output.set_block_at(ground_location, Block::CoarseDirt),
-                            _ => output.set_block_at(ground_location, Block::Podzol),
-                        }
-                        // Bottom part
-                        output.set_block_at(first_block, Block::Flower(palette.flowers[flower_index]));
-
-                        // Top part
-                        match palette.flowers[flower_index] {
-                            Flower::LilacBottom => {
-                                output.set_block_at(second_block, Block::Flower(Flower::LilacTop));
-                            }
-                            Flower::PeonyBottom => {
-                                output.set_block_at(second_block, Block::Flower(Flower::PeonyTop));
-                            }
-                            Flower::RoseBushBottom => {
-                                output.set_block_at(second_block, Block::Flower(Flower::RoseBushTop));
-                            }
-                            Flower::SunflowerBottom => {
-                                output.set_block_at(second_block, Block::Flower(Flower::SunflowerTop));
-                            }
-                            _ => (),
-                        }
-                    } else {
-                        // TODO Maybe consider something else?
-                    }
-                }
-                _ => (),
-            }
-        }
-    }*/
 
     Some(output)
 }
