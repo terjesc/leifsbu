@@ -8,9 +8,9 @@ use mcprogedit::world_excerpt::WorldExcerpt;
 
 use log::{warn};
 
+
 // What is the shape of the room?
 //////////////////////////////////
-
 
 #[derive(Clone, Copy, Debug)]
 pub enum ColumnKind {
@@ -46,10 +46,6 @@ impl RoomShape {
 
         Self { columns, x_dim, z_dim }
     }
-
-    // TODO Generate a RoomShape from coordinate lists for walls, doors, windows.
-    // pub fn from_walls_dors_and_windows() -> Self {
-    // }
 
     /// Get the dimensions of this RoomShape, as `(x_dimension, z_dimension)`.
     pub fn dimensions(&self) -> (usize, usize) {
@@ -104,23 +100,30 @@ enum InteriorPlacementState {
     OccupiedOpen, // There's an object there which does not block movement.
 }
 
+impl InteriorPlacementState {
+    fn is_open(&self) -> bool {
+        if let Self::Available(_) | Self::KeepOpen(_) | Self::OccupiedOpen = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 type InteriorPlacementStateMap = HashMap<(usize, usize, usize), InteriorPlacementState>;
 
 fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> InteriorPlacementStateMap {
     let mut output = HashMap::new();
 
     let (x_len, z_len) = room_shape.dimensions();
-    let height = 2; // TODO get actual ceiling heights from the room_shape instead, in below foor loops
+    let height = 2; // TODO get actual ceiling heights from the room_shape instead, in below for loops
 
     for x in 0..x_len {
         for z in 0..z_len {
             if let Some(ColumnKind::Floor) = room_shape.column_at((x, z)) {
                 for height in 0..height {
                     let mut available_placements = PlacementOptionCollection::new();
-                    let mut neighbourhood_coordinates = vec![(x + 1, z), (x, z + 1)];
-                    if x > 0 { neighbourhood_coordinates.push((x - 1, z)) }
-                    if z > 0 { neighbourhood_coordinates.push((x, z - 1)) }
-
+                    let neighbourhood_coordinates = neighbourhood_4((x, z));
                     let mut must_be_kept_open = false;
 
                     if height == 0 {
@@ -177,6 +180,109 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
     output
 }
 
+
+// Internal functions
+//////////////////////
+
+/// Checks if obstructing blocks can be put at the given coordinates.
+///
+/// This includes checking:
+/// * if the coordinates are already filled with objects
+/// * if the coordinates must be kept open
+/// * if blocking the coordinates splits the walkable area in two distinct regions
+fn is_blocking_safe(
+    interior_placement_state_map: &InteriorPlacementStateMap,
+    blocking_coordinates: &[(usize, usize, usize)]
+) -> bool {
+    // Not safe if any coordinates must be kept open, or are already occupied
+    for coordinates in blocking_coordinates {
+        if let Some(InteriorPlacementState::KeepOpen(_))
+        | Some(InteriorPlacementState::OccupiedBlocking)
+        | Some(InteriorPlacementState::OccupiedOpen)
+        = interior_placement_state_map.get(coordinates) {
+            return false;
+        }
+    }
+
+    // Get map of walkable areas
+    let open_floor_map: HashSet<(usize, usize)> = interior_placement_state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if coordinates.1 == 0 && state.is_open() {
+                Some((coordinates.0, coordinates.2))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let open_head_height_map: HashSet<(usize, usize)> = interior_placement_state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if coordinates.1 == 1 && state.is_open() {
+                Some((coordinates.0, coordinates.2))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let walkable_map: HashSet<(usize, usize)> =  open_floor_map.intersection(&open_head_height_map).copied().collect();
+
+    // Find block (x, z) coordinates that if placed will block movement
+    let movement_blocking_coordinates: HashSet<(usize, usize)> = blocking_coordinates.iter()
+        .filter(|coordinates| coordinates.1 < 2) // Must be in one of bottom two layers
+        .map(|coordinates| (coordinates.0, coordinates.2)) // Only x and z coordinates
+        .collect();
+
+    // Remove the blocking coordinates from the walkable map
+    let walkable_map: HashSet<(usize, usize)> = walkable_map.difference(&movement_blocking_coordinates).copied().collect();
+
+    // Find neighbour coordinates of the blocking coordinates
+    let mut neighbours: HashSet<(usize, usize)> = HashSet::new();
+    for blocking in &movement_blocking_coordinates {
+        for neighbour in neighbourhood_4(*blocking) {
+            neighbours.insert(neighbour);
+        }
+    }
+    // Don't include the blocking coordinates themselves
+    neighbours = neighbours.difference(&movement_blocking_coordinates).copied().collect();
+    // Only include neighbours that are in walkable_map
+    neighbours = neighbours.intersection(&walkable_map).copied().collect();
+
+    if neighbours.len() <= 1 {
+        // With 0 or 1 walkable neighbours, it is impossible for the blocking tiles to block
+        // walkability. It is therefore safe to block the gien set of coordinates.
+        return true;
+    }
+
+    is_subset_connected(&walkable_map, &neighbours)
+}
+
+/// Checks if walk-through blocks can be put at the given coordinates.
+///
+/// This includes checking:
+/// * if the coordinates are already filled with objects
+fn is_nonblocking_safe(
+    interior_placement_state_map: &InteriorPlacementStateMap,
+    blocking_coordinates: &[(usize, usize, usize)]
+) -> bool {
+    // Not safe if any coordinates are already occupied
+    for coordinates in blocking_coordinates {
+        if let Some(InteriorPlacementState::OccupiedBlocking)
+        | Some(InteriorPlacementState::OccupiedOpen)
+        = interior_placement_state_map.get(coordinates) {
+            return false;
+        }
+    }
+
+    // If not proven otherwise, putting down the blocks is safe.
+    true
+}
+
+fn neighbourhood_4((x, z): (usize, usize)) -> Vec<(usize, usize)> {
+    let mut neighbourhood_coordinates = vec![(x + 1, z), (x, z + 1)];
+    if x > 0 { neighbourhood_coordinates.push((x - 1, z)) }
+    if z > 0 { neighbourhood_coordinates.push((x, z - 1)) }
+    neighbourhood_coordinates
+}
+
 fn neighbour_direction(current: (usize, usize), neighbour: (usize, usize)) -> Surface4 {
     if neighbour.0 > current.0 {
         Surface4::East
@@ -192,211 +298,209 @@ fn neighbour_direction(current: (usize, usize), neighbour: (usize, usize)) -> Su
     }
 }
 
-// NB What directions must be unoccupied, around an already placed object?
-//      * Use InteriorPlacementState::KeepOpen and ::OccupiedOpen to mark places that need to be open.
-//      * For corner objects: Just live with the fact that both or a random direction is KeepOpen.
+/// Checks if all coordinates in the subset are connected via the coordinates in set.
+fn is_subset_connected(set: &HashSet<(usize, usize)>, subset: &HashSet<(usize, usize)>) -> bool {
+    if subset.len() < 2 {
+        return true;
+    }
 
+    let source = subset.into_iter().next().expect("We know that subset has len() >= 2 from previous check.");
+    let mut subset = subset.clone();
+    let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
+    let mut visited: HashSet<(usize, usize)> = HashSet::new();
 
-// TODO Put InteriorPlacementState in some structure (map from coordinates to state?), to:
-//      1) Keep track of where it is still possible to put objects.
-//      2) Keep track of positions that must be open for movement and/or object access.
-//      3) Allow for "walkability" checks, keeping the walkable area contiguous.
+    subset.remove(source);
+    queue.push_back(*source);
 
+    while let Some(coordinates) = queue.pop_front() {
+        if visited.contains(&coordinates) {
+            continue;
+        }
+        visited.insert(coordinates);
 
-// NB TODO FIXME This whole (unfinished) InteriorVoxelState and InteriorVoxelStateCuboid thing can be nuked.
+        let neighbours = neighbourhood_4(coordinates);
+        for neighbour in neighbours {
+            if !set.contains(&neighbour) {
+                continue;
+            }
+
+            subset.remove(&neighbour);
+            queue.push_back(neighbour);
+
+            if subset.is_empty() {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /*
-#[derive(Clone, Copy, Debug)]
-enum InteriorVoxelState {
-    OutOfBounds, // Outside the editable area
-    Available, // Objects can be placed in this voxel
-    Occupied, // Object already placed in this voxel
-    KeepOpen, // Voxel must be kept available for passage
-    OpenWithObject, // Voxel is available for passage, but has a passable object.
+type InteriorPlacementStateMap = HashMap<(usize, usize, usize), InteriorPlacementState>;
+enum InteriorPlacementState {
+    Available(PlacementOptionCollection), // Position is available for any object placement.
+    KeepOpen(PlacementOptionCollection), // Position is available for non-blocking objects only.
+    OccupiedBlocking, // There's an object there which blocks movement.
+    OccupiedOpen, // There's an object there which does not block movement.
 }
-
-// TODO InteriorVoxelStateSpace: Structure for placed objects (3D structure of InteriorVoxelState)
-/// 3D voxel map of the furnishing state of the room.
-#[derive(Clone, Debug)]
-struct InteriorVoxelStateCuboid {
-    voxels: Vec<InteriorVoxelState>,
-    x_dim: usize,
-    y_dim: usize,
-    z_dim: usize,
-}
-
-impl InteriorVoxelStateCuboid {
-
-    /// Returns a new InteriorVoxelStateSpace of the given dimensions, with all voxels marked out-of-bounds.
-    pub fn new((x_dim, y_dim, z_dim): (usize, usize, usize)) -> Self {
-        Self::new_filled((x_dim, y_dim, z_dim), InteriorVoxelState::OutOfBounds)
-    }
-
-    /// Returns a new InteriorVoxelStateSpace of the given dimensions, with all voxels set to `voxel_state`.
-    pub fn new_filled(
-        (x_dim, y_dim, z_dim): (usize, usize, usize),
-        voxel_state: InteriorVoxelState,
-    ) -> Self {
-        let voxels_len = x_dim * y_dim * z_dim;
-        let voxels = vec![voxel_state; voxels_len];
-
-        Self { voxels, x_dim, y_dim, z_dim }
-    }
-
-    /// Generates an InteriorVoxelStateCuboid from a RoomState.
-    pub fn from_room_shape(room_shape: &RoomShape) -> Self {
-        let (x_len, z_len) = room_shape.dimensions();
-        let mut cuboid = Self::new((x_len, 2, z_len));
-
-        // We must make sure every open square has access to a chosen open sink square.
-        //      Some(direction): Access to sink via the square to that direction.
-        //      None => No access, or is wall or window or out of bounds or whatever.
-        let mut door_access: HashMap<(usize, usize), Option<Surface4>> = HashMap::new();
-
-        // Initialize with None (meaning no route to sink.)
-        for x in 0..x_len {
-            for z in 0..z_len {
-                match room_shape.column_at((x, z)) {
-                    Some(ColumnKind::Floor)
-                    | Some(ColumnKind::Door) => { door_access.insert((x, z), None); }
-                    None => unreachable!(),
-                    _ => (),
-                }
-            }
-        }
-
-        // If there are no doors or floors, then everything is out-of-bounds.
-        if door_access.is_empty() {
-            return cuboid;
-        }
-
-        // Pick a door as sink square. This ensures navigable path to the door, from any point
-        // within the room, and from any other door bordering the room.
-        // TODO pick a door as sink, instead of random node, and if no door pick a floor.
-        let sink: (usize, usize) = door_access.keys().copied().next().unwrap();
-
-        // Flood fill from the chosen sink
-        let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
-        queue.push_back(sink);
-        while let Some((x, z)) = queue.pop_front() {
-            // For each neigbour,
-            // if neighbour is None (i.e. undecided as of yet),
-            // add direction and push neighbour to queue
-            if x > 0 {
-                let neighbour_coordinates = (x - 1, z);
-                if let Some(direction) = door_access.get_mut(&neighbour_coordinates) {
-                    if *direction == None {
-                        queue.push_back(neighbour_coordinates);
-                        *direction = Some(Surface4::East);
-                    }
-                }
-            }
-            if x < x_len - 1 {
-                let neighbour_coordinates = (x + 1, z);
-                if let Some(direction) = door_access.get_mut(&neighbour_coordinates) {
-                    if *direction == None {
-                        queue.push_back(neighbour_coordinates);
-                        *direction = Some(Surface4::West);
-                    }
-                }
-            }
-            if z > 0 {
-                let neighbour_coordinates = (x, z - 1);
-                if let Some(direction) = door_access.get_mut(&neighbour_coordinates) {
-                    if *direction == None {
-                        queue.push_back(neighbour_coordinates);
-                        *direction = Some(Surface4::North);
-                    }
-                }
-            }
-            if z < z_len - 1 {
-                let neighbour_coordinates = (x, z + 1);
-                if let Some(direction) = door_access.get_mut(&neighbour_coordinates) {
-                    if *direction == None {
-                        queue.push_back(neighbour_coordinates);
-                        *direction = Some(Surface4::South);
-                    }
-                }
-            }
-        }
-
-        // NB 'door_access' now keeps track of how every location is reachable from a traversable
-        // square connected to the entrance of the room. Whenever a traversable square is changed
-        // to block traversing, first it is checked if door access for neighbouring squares can be
-        // redirected to other traversable squares with paths to the entrance. If so, the square
-        // can be changed to block traversing. If, after redirection attempt for all neighbours,
-        // one or more neighbours still rely on the square for traversing to the entrance, then the
-        // square cannot be changed from traversable to untraversable.
-
-        // TODO use room shape properties to fill cuboid with Available and KeepOpen as seen fit.
-        // For first attempt, try to put things along walls only.
-        for x in 0..x_len {
-            for z in 0..z_len {
-                if let Some(ColumnKind::Floor) = room_shape.column_at((x, z)) {
-                    if (x, z) == sink {
-                        cuboid.set_voxel_state_at((x, 0, z), InteriorVoxelState::KeepOpen);
-                        cuboid.set_voxel_state_at((x, 1, z), InteriorVoxelState::KeepOpen);
-                        continue;
-                    }
-                    // TODO Check neighbours:
-                    // if blocks door access: KeepOpen
-                    // else if window neighbour exist: bottom block is Available, top is KeepOpen
-                    // else if wall neighbour exist: both blocks are Available
-                    // else: KeepOpen
-                }
-            }
-        }
-
-        //
-        // TODO When about to designate an "Available", consider all neighbours.
-        //          If they reach sink through other nodes than this one, everything fine.
-        //          If they reach sink through this node:
-        //              If they can be redirected to sink through a different node, switch,
-        //              everything is fine.
-        //              If they cannot be redirected, this node is KeepOpen.
-        //          Whenever "everything fine", this node can be set "Available"
-
-        // TODO Use room shape properties to fill cuboid with Available and KeepOpen as seen fit.
-
-        cuboid
-    }
-
-    /// Get the dimensions of this RoomShape, as `(x_dimension, z_dimension)`.
-    pub fn dimensions(&self) -> (usize, usize, usize) {
-        (self.x_dim, self.y_dim, self.z_dim)
-    }
-
-    /// Set the voxel state at the (x, y, z) location `coordinates` to the given voxel state.
-    pub fn set_voxel_state_at(
-        &mut self,
-        coordinates: (usize, usize, usize),
-        voxel_state: InteriorVoxelState,
-    ) {
-        if let Some(index) = self.index(coordinates) {
-            self.voxels[index] = voxel_state;
-        }
-    }
-
-    /// Get the voxel state at the (x, y, z) location `coordinates`.
-    pub fn voxel_state_at(&self, coordinates: (usize, usize, usize)) -> Option<InteriorVoxelState> {
-        self.index(coordinates).map(|index| *self.voxels.get(index).unwrap())
-    }
-
-    fn index(&self, (x, y, z): (usize, usize, usize)) -> Option<usize> {
-        if x >= self.x_dim || y >= self.y_dim || z >= self.z_dim {
-            None
-        } else {
-            Some(self.y_dim * self.z_dim * x + self.y_dim * z + y)
-        }
-    }
-
+type PlacementOptionCollection = HashSet<PlacementOption>;
+enum PlacementOption {
+    OnWall(Surface4), // Registered surface is facing the wall
+    OnFloorFreestanding,
+    OnFloorBacked(Surface4), // Registered surface is facing wall or object
+    FromCeilingFreestanding,
+    FromCeilingBacked(Surface4), // Registered surface is facing wall or object
 }
 */
 
+fn available_on_floor_backed(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if let InteriorPlacementState::Available(placement_collection) = state {
+                for placement_option in placement_collection {
+                    if let PlacementOption::OnFloorBacked(_) = placement_option {
+                        return Some(*coordinates);
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn available_on_floor_freestanding(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if let InteriorPlacementState::Available(placement_collection) = state {
+                for placement_option in placement_collection {
+                    if let PlacementOption::OnFloorFreestanding = placement_option {
+                        return Some(*coordinates);
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn available_on_floor(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    available_on_floor_backed(state_map).union(&available_on_floor_freestanding(state_map)).copied().collect()
+}
+
+fn walkable(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    let open_floor_map: HashSet<(usize, usize)> = state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if coordinates.1 == 0 && state.is_open() {
+                Some((coordinates.0, coordinates.2))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let open_head_height_map: HashSet<(usize, usize)> = state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if coordinates.1 == 1 && state.is_open() {
+                Some((coordinates.0, coordinates.2))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let walkable_map: HashSet<(usize, usize)> =  open_floor_map.intersection(&open_head_height_map).copied().collect();
+
+    state_map.iter()
+        .filter_map(|(coordinates, _)| {
+            if walkable_map.contains(&(coordinates.0, coordinates.2)) {
+                Some(*coordinates)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+// Functions for placing objects / fulfilling room requirement
+///////////////////////////////////////////////////////////////
+
+/// Place objects fulfilling the "sleep" requirement for one person, e.g. a bed.
+fn place_single_sleep(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
+    // Find all ground tiles with wall (or other) backing, for bed head end.
+    let on_floor_backed_tiles = available_on_floor_backed(&state_map);
+    let on_floor_tiles = available_on_floor(&state_map);
+    let walkable_tiles = walkable(&state_map);
+
+    // TODO Iterate sorted by distance from door (farther away is better)
+    // TODO Prefer walkable tiles already marked for keeping open
+    // TODO Prefer walkable tiles to the side of the bed over walkable tiles behind it
+    for candidate_head_end in on_floor_backed_tiles {
+        // Find adjacent tiles which may be used for foot end of bed
+        for candidate_foot_end in neighbourhood_4((candidate_head_end.0, candidate_head_end.2))
+                .iter()
+                .map(|(x, z)| (*x, candidate_head_end.1, *z))
+                .filter(|c| on_floor_tiles.contains(&c)) {
+            for candidate_open_tile in neighbourhood_4((candidate_foot_end.0, candidate_foot_end.2))
+                    .iter()
+                    .map(|(x, z)| (*x, candidate_foot_end.1, *z))
+                    .filter(|c| walkable_tiles.contains(&c) && *c != candidate_head_end) {
+                if is_blocking_safe(&state_map, &[candidate_head_end, candidate_foot_end]) {
+                    let he = candidate_head_end;
+                    let fe = candidate_foot_end;
+
+                    let colour = Colour::Red;
+                    let facing = neighbour_direction((fe.0, fe.2), (he.0, he.2));
+                    let head_end = BlockCoord(he.0 as i64, he.1 as i64, he.2 as i64);
+                    let foot_end = BlockCoord(fe.0 as i64, fe.1 as i64, fe.2 as i64);
+
+                    excerpt.set_block_at(
+                        head_end,
+                        Block::Bed(
+                            mcprogedit::block::Bed { colour, facing, end: mcprogedit::block::BedEnd::Head }
+                        )
+                    );
+                    excerpt.set_block_at(
+                        foot_end,
+                        Block::Bed(
+                            mcprogedit::block::Bed { colour, facing, end: mcprogedit::block::BedEnd::Foot }
+                        )
+                    );
+
+                    // State bookkeeping
+                    state_map_mark_blocking(state_map, candidate_head_end);
+                    state_map_mark_blocking(state_map, candidate_foot_end);
+                    state_map_mark_open(state_map, candidate_open_tile);
+
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn state_map_mark_open(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
+    let current = state_map.entry(coordinates).or_insert(InteriorPlacementState::KeepOpen(HashSet::new()));
+    if let InteriorPlacementState::Available(collection) = current {
+        *current = InteriorPlacementState::KeepOpen(collection.clone());
+    }
+    // TODO Return an error if *current == OccupiedBlocking, as then it is already blocking and
+    // cannot be kept open.
+}
+
+fn state_map_mark_blocking(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
+    state_map.insert(coordinates, InteriorPlacementState::OccupiedBlocking);
+    // TODO Check first if already an Occupied state, and if so return an error.
+}
+
 // Functions for placing objects:
-// Takes (&RoomShape, &InteriorLayout, &mut WorldExcerpt, budget: usize),
+// Takes (&WorldExcerpt, &InteriorPlacementStateMap, budget),
 // places object(s) within budget number of blocks placed,
 // returns whether or not it succeeded (bool, Result<(), ()> or some enum).
-// TODO Function for placing "sleep"
 // TODO Function for placing "cook"
 // TODO Function for placing "store"
 // TODO Function for placing "eat"
@@ -415,11 +519,12 @@ impl InteriorVoxelStateCuboid {
 //      - Wants: "store", "decor", "study", "sit"
 // TODO Debug function: Marks all "Available" "Floor" locations with glass block.
 
-pub fn furnish_debug(room_shape: &RoomShape) -> Option<WorldExcerpt> {
-    // TODO FIXME replace with calculating
-//    let interior_voxel_states = InteriorVoxelStateCuboid::from_room_shape(&room_shape);
 
-    let placement_state_map = interior_placement_state_map_from_room_shape(&room_shape);
+// Functions for furnishing various rooms
+//////////////////////////////////////////
+
+pub fn furnish_debug(room_shape: &RoomShape) -> Option<WorldExcerpt> {
+    let mut placement_state_map = interior_placement_state_map_from_room_shape(&room_shape);
 
     // Create a world excerpt, for placing objects into
     let (x, z) = room_shape.dimensions();
@@ -446,5 +551,25 @@ pub fn furnish_debug(room_shape: &RoomShape) -> Option<WorldExcerpt> {
     }
 
     Some(output)
+}
+
+pub fn furnish_cottage(room_shape: &RoomShape) -> Option<WorldExcerpt> {
+    let mut placement_state_map = interior_placement_state_map_from_room_shape(&room_shape);
+
+    let (x, z) = room_shape.dimensions();
+    let mut output = WorldExcerpt::new(x, 2, z);
+
+    // TODO Put down a reasonable number of beds, not as many as the algorithm is able to fit!
+    while place_single_sleep(&mut output, &mut placement_state_map) { ; }
+
+    Some(output)
+/*
+    if place_single_sleep(&mut output, &mut placement_state_map) {
+        Some(output)
+    } else {
+        None
+    }
+*/
+    // TODO Place also "cook", "store" and "light"
 }
 

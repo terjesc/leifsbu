@@ -3,7 +3,7 @@ use crate::build_area::BuildArea;
 use crate::geometry;
 use crate::geometry::{RawEdge2d};
 use crate::line::line;
-use crate::room_interior::{ColumnKind, furnish_debug, RoomShape};
+use crate::room_interior::{ColumnKind, furnish_cottage, RoomShape};
 
 use log::{trace, warn};
 use mcprogedit::block::{Block, Flower};
@@ -448,17 +448,15 @@ pub fn build_house(
             }
         }
 
-        // TODO Call debug function for furnishing (putting down diagnostic carpets)
-        if let Some(interior) = furnish_debug(&room_shape) {
-        // TODO paste into plot excerpt
+        // TODO Implement and call function for furnishing "cottage" instead.
+        //      (for now, later there might be multiple functions depending on plot size
+        //      and/or other factors.)
+
+        // Furnish the room
+        if let Some(interior) = furnish_cottage(&room_shape) {
             output.paste(BlockCoord(0, *y + 1, 0), &interior);
         }
     }
-
-    // TODO Call function for furnishing "cottage"
-    //      (for now, later there might be multiple functions depending on plot size
-    //      and/or other factors.)
-    // TODO Copy the blocks from the WorldExcerpt returned from the furnishing function, into output.
 
     // Place some flowers in suitable areas around the house.
     let outside_area: HashSet<(usize, usize)> = road_along_buildable

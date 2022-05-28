@@ -13,6 +13,7 @@ mod partitioning;
 mod pathfinding;
 mod plot;
 mod road;
+mod room_interior;
 mod structure_builder;
 mod tree;
 mod types;
@@ -111,7 +112,8 @@ fn main() {
     // - Find primary sector areas (agriculture, fishing, forestry, mining)
     // - Put major roads from primary sectors to town circumference
     // - Actually, find more settlement locations as well,
-    //      and use some nice triangulation (e.g. Delaunay) for connecting everything.
+    //      and use some nice triangulation for connecting everything.
+    //      (e.g. Delaunay, Gabriel graph, or Relative neighbourhood graph.)
 
     // Create road paths...
     // TODO refactor: Move the path generation somewhere else?
