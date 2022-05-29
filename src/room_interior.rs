@@ -6,7 +6,8 @@ use mcprogedit::coordinates::BlockCoord;
 use mcprogedit::positioning::Surface4;
 use mcprogedit::world_excerpt::WorldExcerpt;
 
-use log::{warn};
+use log::{trace, warn};
+use rand::{Rng, thread_rng};
 
 
 // What is the shape of the room?
@@ -64,7 +65,7 @@ impl RoomShape {
     }
 
     /// Get the column kind at the (x, z) location `coordinates`.
-    pub fn column_at(&self, coordinates: (usize, usize)) -> Option<ColumnKind> {
+    pub fn column_kind_at(&self, coordinates: (usize, usize)) -> Option<ColumnKind> {
         self.index(coordinates).map(|index| *self.columns.get(index).unwrap())
     }
 
@@ -120,7 +121,7 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
 
     for x in 0..x_len {
         for z in 0..z_len {
-            if let Some(ColumnKind::Floor) = room_shape.column_at((x, z)) {
+            if let Some(ColumnKind::Floor) = room_shape.column_kind_at((x, z)) {
                 for height in 0..height {
                     let mut available_placements = PlacementOptionCollection::new();
                     let neighbourhood_coordinates = neighbourhood_4((x, z));
@@ -129,7 +130,7 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
                     if height == 0 {
                         // Ground level
                         for neighbour_coordinates in neighbourhood_coordinates {
-                            match room_shape.column_at(neighbour_coordinates) {
+                            match room_shape.column_kind_at(neighbour_coordinates) {
                                 Some(ColumnKind::Wall)
                                 | Some(ColumnKind::Window) => {
                                     let direction = neighbour_direction((x, z), neighbour_coordinates);
@@ -145,7 +146,7 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
                     } else {
                         // Window level
                         for neighbour_coordinates in neighbourhood_coordinates {
-                            match room_shape.column_at(neighbour_coordinates) {
+                            match room_shape.column_kind_at(neighbour_coordinates) {
                                 Some(ColumnKind::Wall) => {
                                     let direction = neighbour_direction((x, z), neighbour_coordinates);
                                     available_placements.insert(PlacementOption::OnWall(direction));
@@ -154,9 +155,6 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
                                 | Some(ColumnKind::Door) => must_be_kept_open = true,
                                 _ => (),
                             }
-                        }
-                        if available_placements.is_empty() {
-                            available_placements.insert(PlacementOption::OnFloorFreestanding);
                         }
                     }
                     // TODO intermediate levels (above windows)
@@ -283,6 +281,13 @@ fn neighbourhood_4((x, z): (usize, usize)) -> Vec<(usize, usize)> {
     neighbourhood_coordinates
 }
 
+fn neighbourhood_4_3d((x, y, z): (usize, usize, usize)) -> Vec<(usize, usize, usize)> {
+    let mut neighbourhood_coordinates = vec![(x + 1, y, z), (x, y, z + 1)];
+    if x > 0 { neighbourhood_coordinates.push((x - 1, y, z)) }
+    if z > 0 { neighbourhood_coordinates.push((x, y, z - 1)) }
+    neighbourhood_coordinates
+}
+
 fn neighbour_direction(current: (usize, usize), neighbour: (usize, usize)) -> Surface4 {
     if neighbour.0 > current.0 {
         Surface4::East
@@ -295,6 +300,26 @@ fn neighbour_direction(current: (usize, usize), neighbour: (usize, usize)) -> Su
     } else {
         warn!("Trying to get direction to same coordinates: {:?}", current);
         Surface4::North
+    }
+}
+
+fn neighbour_in_direction(current: (usize, usize), direction: Surface4) -> Option<(usize, usize)> {
+    let (x, z) = current;
+    match direction {
+        Surface4::West => if x > 0 { Some((x - 1, z)) } else { None },
+        Surface4::North => if z > 0 { Some((x, z - 1)) } else { None },
+        Surface4::East => Some((x + 1, z)),
+        Surface4::South => Some((x, z + 1)),
+    }
+}
+
+fn neighbour_in_direction_3d(current: (usize, usize, usize), direction: Surface4) -> Option<(usize, usize, usize)> {
+    let (x, y, z) = current;
+    match direction {
+        Surface4::West => if x > 0 { Some((x - 1, y, z)) } else { None },
+        Surface4::North => if z > 0 { Some((x, y, z - 1)) } else { None },
+        Surface4::East => Some((x + 1, y, z)),
+        Surface4::South => Some((x, y, z + 1)),
     }
 }
 
@@ -335,24 +360,6 @@ fn is_subset_connected(set: &HashSet<(usize, usize)>, subset: &HashSet<(usize, u
 
     false
 }
-
-/*
-type InteriorPlacementStateMap = HashMap<(usize, usize, usize), InteriorPlacementState>;
-enum InteriorPlacementState {
-    Available(PlacementOptionCollection), // Position is available for any object placement.
-    KeepOpen(PlacementOptionCollection), // Position is available for non-blocking objects only.
-    OccupiedBlocking, // There's an object there which blocks movement.
-    OccupiedOpen, // There's an object there which does not block movement.
-}
-type PlacementOptionCollection = HashSet<PlacementOption>;
-enum PlacementOption {
-    OnWall(Surface4), // Registered surface is facing the wall
-    OnFloorFreestanding,
-    OnFloorBacked(Surface4), // Registered surface is facing wall or object
-    FromCeilingFreestanding,
-    FromCeilingBacked(Surface4), // Registered surface is facing wall or object
-}
-*/
 
 fn available_on_floor_backed(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
     state_map.iter()
@@ -424,8 +431,138 @@ fn walkable(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usi
         .collect()
 }
 
+fn on_wall_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+    if let Some(state) = state_map.get(&coordinates) {
+        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+            return collection.iter()
+                .filter_map(|option| {
+                    if let PlacementOption::OnWall(direction) = option {
+                        Some(*direction)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+        }
+    }
+
+    Vec::new()
+}
+
+fn on_floor_backed_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+    if let Some(state) = state_map.get(&coordinates) {
+        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+            return collection.iter()
+                .filter_map(|option| {
+                    if let PlacementOption::OnFloorBacked(direction) = option {
+                        Some(*direction)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+        }
+    }
+
+    Vec::new()
+}
+
+fn from_ceiling_backed_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+    if let Some(state) = state_map.get(&coordinates) {
+        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+            return collection.iter()
+                .filter_map(|option| {
+                    if let PlacementOption::FromCeilingBacked(direction) = option {
+                        Some(*direction)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+        }
+    }
+
+    Vec::new()
+}
+
+/*
+type InteriorPlacementStateMap = HashMap<(usize, usize, usize), InteriorPlacementState>;
+enum InteriorPlacementState {
+    Available(PlacementOptionCollection), // Position is available for any object placement.
+    KeepOpen(PlacementOptionCollection), // Position is available for non-blocking objects only.
+    OccupiedBlocking, // There's an object there which blocks movement.
+    OccupiedOpen, // There's an object there which does not block movement.
+}
+type PlacementOptionCollection = HashSet<PlacementOption>;
+enum PlacementOption {
+    OnWall(Surface4), // Registered surface is facing the wall
+    OnFloorFreestanding,
+    OnFloorBacked(Surface4), // Registered surface is facing wall or object
+    FromCeilingFreestanding,
+    FromCeilingBacked(Surface4), // Registered surface is facing wall or object
+}
+*/
+
 // Functions for placing objects / fulfilling room requirement
 ///////////////////////////////////////////////////////////////
+
+/// Place objects fulfilling the "cooking" requirement, e.g. a furnace, or smoker.
+fn place_cooking(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
+    let walkable_tiles = walkable(&state_map);
+
+    for location in available_on_floor_backed(&state_map) {
+        for direction in on_floor_backed_directions(state_map, location) {
+            let direction = direction.opposite();
+            if let Some(neighbour) = neighbour_in_direction_3d(location, direction) {
+                if walkable_tiles.contains(&neighbour)
+                && is_blocking_safe(&state_map, &[location]) {
+                    excerpt.set_block_at(
+                        BlockCoord(location.0 as i64, location.1 as i64, location.2 as i64),
+                        Block::furnace(direction),
+                    );
+                    state_map_mark_blocking(state_map, location);
+                    state_map_mark_open(state_map, neighbour);
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// Place objects fulfilling the "hygiene" requirement, e.g. some washing utility.
+fn place_hygiene(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
+    let walkable_tiles = walkable(&state_map);
+
+    let candidates: Vec<(usize, usize, usize)> = available_on_floor_backed(&state_map)
+        .into_iter()
+        .chain(
+            available_on_floor_freestanding(&state_map)
+            .into_iter()
+        )
+        .collect();
+
+    for location in candidates {
+        for neighbour in neighbourhood_4_3d(location) {
+            if walkable_tiles.contains(&neighbour)
+            && is_blocking_safe(&state_map, &[location]) {
+                let mut rng = thread_rng();
+                let water_level = mcprogedit::bounded_ints::Int0Through3::new(rng.gen_range(0..=3)).unwrap();
+
+                excerpt.set_block_at(
+                    BlockCoord(location.0 as i64, location.1 as i64, location.2 as i64),
+                    Block::Cauldron { water_level },
+                );
+                state_map_mark_blocking(state_map, location);
+                state_map_mark_open(state_map, neighbour);
+                return true;
+            }
+        }
+    }
+
+    false
+}
 
 /// Place objects fulfilling the "sleep" requirement for one person, e.g. a bed.
 fn place_single_sleep(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
@@ -451,7 +588,10 @@ fn place_single_sleep(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacem
                     let he = candidate_head_end;
                     let fe = candidate_foot_end;
 
-                    let colour = Colour::Red;
+                    let mut rng = thread_rng();
+                    let colour: Colour = rng.gen_range(0..=15).into();
+
+                   // let colour = Colour::Red;
                     let facing = neighbour_direction((fe.0, fe.2), (he.0, he.2));
                     let head_end = BlockCoord(he.0 as i64, he.1 as i64, he.2 as i64);
                     let foot_end = BlockCoord(fe.0 as i64, fe.1 as i64, fe.2 as i64);
@@ -483,6 +623,13 @@ fn place_single_sleep(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacem
     false
 }
 
+// TODO place_double_sleep
+
+
+fn state_map_mark_occupied_open(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
+    state_map.insert(coordinates, InteriorPlacementState::OccupiedOpen);
+}
+
 fn state_map_mark_open(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
     let current = state_map.entry(coordinates).or_insert(InteriorPlacementState::KeepOpen(HashSet::new()));
     if let InteriorPlacementState::Available(collection) = current {
@@ -508,6 +655,7 @@ fn state_map_mark_blocking(state_map: &mut InteriorPlacementStateMap, coordinate
 // TODO Function for placing "decor"
 // TODO Function for placing "sit"
 // TODO Function for placing "study"
+// TODO Function for placing "hygiene"
 
 // Functions for furnishing rooms:
 // Takes (&RoomShape), returns WorldExcerpt containing the furniture.
@@ -559,8 +707,12 @@ pub fn furnish_cottage(room_shape: &RoomShape) -> Option<WorldExcerpt> {
     let (x, z) = room_shape.dimensions();
     let mut output = WorldExcerpt::new(x, 2, z);
 
+    place_cooking(&mut output, &mut placement_state_map);
+
     // TODO Put down a reasonable number of beds, not as many as the algorithm is able to fit!
-    while place_single_sleep(&mut output, &mut placement_state_map) { ; }
+    while place_single_sleep(&mut output, &mut placement_state_map) {}
+
+    place_hygiene(&mut output, &mut placement_state_map);
 
     Some(output)
 /*
@@ -570,6 +722,6 @@ pub fn furnish_cottage(room_shape: &RoomShape) -> Option<WorldExcerpt> {
         None
     }
 */
-    // TODO Place also "cook", "store" and "light"
+    // TODO Place also "cook", "store", "hygiene" and "light"
 }
 

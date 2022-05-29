@@ -11,9 +11,10 @@ description = "Minecraft settlement generator."
 clap = "2.33.2"
 image = "0.23.14"
 imageproc = "0.22.0"
+log = "0.4"
 mcprogedit = { path = "../mcprogedit" }
 num-integer = "0.1"
 pathfinding = "2.1.4"
-log = "0.4"
+rand = "0.8.5"
 simple_logger = { version = "2.1", default-features = false, features = ["stderr"] }
 

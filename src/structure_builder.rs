@@ -437,7 +437,6 @@ pub fn build_house(
         possible_window_coordinates.iter()
             .filter(|block_coordinates| { block_coordinates.1 == y + 2 })
             .for_each(|block_coordinates| {
-                trace!("Adding {:?} to window list.", block_coordinates);
                 room_shape.set_column_kind_at(
                     (block_coordinates.0 as usize, block_coordinates.2 as usize),
                     ColumnKind::Window,
@@ -592,8 +591,6 @@ fn calculate_roof_coordinates(
             adjusted_roof.insert(coordinates - offset);
         }
         roof = adjusted_roof;
-    } else {
-        trace!("Roof is at perfect height!");
     }
 
     roof
