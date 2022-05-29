@@ -4,7 +4,6 @@ use crate::pathfinding::{road_path_from_snake, snake_from_road_path, RoadPath};
 use crate::types::*;
 
 use image::{GrayImage, ImageBuffer, Luma};
-use imageproc::contrast::stretch_contrast;
 use imageproc::distance_transform::Norm;
 use imageproc::drawing::draw_line_segment_mut;
 use imageproc::morphology::*;
@@ -15,6 +14,9 @@ use log::warn;
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 use num_integer::Roots;
 use std::cmp::{max, min};
+
+#[cfg(feature = "debug_images")]
+use imageproc::contrast::stretch_contrast;
 
 // Plot partitioning…
 // Let's figure out how to do that!
@@ -147,7 +149,7 @@ pub fn divide_town_into_blocks(
         COVERED,
     );
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     settlement_stencil.save("P-01 circumference.png").unwrap();
 
     // Mark the outside of the town as covered
@@ -159,7 +161,7 @@ pub fn divide_town_into_blocks(
         }
     }
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     settlement_stencil.save("P-02 area stencil.png").unwrap();
 
     // Mark roads
@@ -168,7 +170,7 @@ pub fn divide_town_into_blocks(
         draw_offset_road(&mut infrastructure, road, &offset, COVERED);
     }
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     infrastructure
         .save("P-03 existing infrastructure.png")
         .unwrap();
@@ -176,7 +178,7 @@ pub fn divide_town_into_blocks(
     // Get map of initial areas as divided by initial roads
     let initial_areas = combine_max(&settlement_stencil, &infrastructure);
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     initial_areas.save("P-04 initial areas.png").unwrap();
 
     // Find distinct initial areas
@@ -191,24 +193,22 @@ pub fn divide_town_into_blocks(
     } = find_extremes(&initial_areas);
     println!("Found {} distinct existing areas.", full_area_count);
 
-    // NB Only for generating nice debug visuals...
+    #[cfg(feature = "debug_images")]
     if full_area_count > 0 {
         let areas = stretch_contrast(&initial_areas, 0u8, full_area_count);
-
-        // TODO Save only if debug images is enabled
         areas.save("P-05 full areas.png").unwrap();
     }
 
     // Mark areas close to roads as covered
     let road_coverage = dilate(&infrastructure, Norm::LInf, ROAD_COVERAGE_RADIUS);
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     road_coverage.save("P-06 close to road.png").unwrap();
 
     // Get map of initial coverage
     let initial_coverage = combine_max(&settlement_stencil, &road_coverage);
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     initial_coverage.save("P-07 initial coverage.png").unwrap();
 
     // Find distinct uncovered areas
@@ -226,11 +226,9 @@ pub fn divide_town_into_blocks(
         area_count
     );
 
-    // NB Only for generating nice debug visuals...
+    #[cfg(feature = "debug_images")]
     if area_count > 0 {
         let areas = stretch_contrast(&uncovered_areas, 0u8, area_count);
-
-        // TODO Save only if debug images is enabled
         areas.save("P-08 areas.png").unwrap();
     }
 
@@ -321,7 +319,7 @@ pub fn divide_town_into_blocks(
     draw_offset_snake(&mut wall_roads, &street_close_to_border, &offset, COVERED);
     draw_offset_snake(&mut wall_roads, &street_far_from_border, &offset, COVERED);
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     wall_roads.save("P-09 wall roads.png").unwrap();
 
     let mut streets = Vec::new();
@@ -338,7 +336,7 @@ pub fn divide_town_into_blocks(
         // Get the uncovered stencil for only this area
         let mut area_stencil = stencil_from_value(&uncovered_areas, Luma([area_index as u8]));
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         area_stencil
             .save(format!("P-10 area {:0>2}.png", area_index))
             .unwrap();
@@ -348,7 +346,7 @@ pub fn divide_town_into_blocks(
         let value = initial_areas[location];
         let full_area_stencil = stencil_from_value(&initial_areas, value);
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         full_area_stencil
             .save(format!("P-10 full area {:0>2}.png", area_index))
             .unwrap();
@@ -361,15 +359,16 @@ pub fn divide_town_into_blocks(
         let far_path = sub_snake(&street_far_from_border, &full_area_stencil, &offset);
         let far_path = attach_to_road_system(&far_path, roads, 6f32);
 
-        // NB Only for making nice debug visuals...
-        let mut wall_roads = image::ImageBuffer::new(dimensions.0 as u32, dimensions.1 as u32);
-        draw_offset_snake(&mut wall_roads, &close_path, &offset, COVERED);
-        draw_offset_snake(&mut wall_roads, &far_path, &offset, COVERED);
+        #[cfg(feature = "debug_images")]
+        {
+            let mut wall_roads = image::ImageBuffer::new(dimensions.0 as u32, dimensions.1 as u32);
+            draw_offset_snake(&mut wall_roads, &close_path, &offset, COVERED);
+            draw_offset_snake(&mut wall_roads, &far_path, &offset, COVERED);
 
-        // TODO Save only if debug images is enabled
-        wall_roads
-            .save(format!("P-10 wall roads {:0>2}.png", area_index))
-            .unwrap();
+            wall_roads
+                .save(format!("P-10 wall roads {:0>2}.png", area_index))
+                .unwrap();
+        }
 
         // Find coverage area for found close path
         let mut close_cover = image::ImageBuffer::new(dimensions.0 as u32, dimensions.1 as u32);
@@ -403,8 +402,7 @@ pub fn divide_town_into_blocks(
         remove_cover(&mut area_stencil, &far_cover);
 
 
-        // TODO Save only if debug images is enabled
-        // NB Only for making nice debug visuals...
+        #[cfg(feature = "debug_images")]
         area_stencil
             .save(format!("P-10 area {:0>2} after wall path.png", area_index))
             .unwrap();
@@ -428,8 +426,7 @@ pub fn divide_town_into_blocks(
         let new_area_stencil = stencil_from_value(&continuous_regions, area_colour);
 
 
-        // TODO Save only if debug images is enabled
-        // NB Only for making nice debug visuals...
+        #[cfg(feature = "debug_images")]
         new_area_stencil
             .save(format!("P-10 new area {:0>2}.png", area_index))
             .unwrap();

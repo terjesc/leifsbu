@@ -169,7 +169,7 @@ fn main() {
         }
     }
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     road_path_image.save("road_path_001.png").unwrap();
 
     // Split out the raw roads into city roads and country roads
@@ -213,7 +213,7 @@ fn main() {
             image::Luma([255u8]),
         );
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
 
         println!("District {} has area {}.", colour, geometry::area(district));
@@ -253,7 +253,7 @@ fn main() {
         pathfinding::draw_road_path(&mut city_plan, road);
     }
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     city_plan.save("city plan.png").unwrap();
 
 

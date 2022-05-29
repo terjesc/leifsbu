@@ -126,28 +126,29 @@ impl Features {
                                0.0*F, 0.0*F, 0.0*F,
                                3.0*F, 10.0*F, 3.0*F];
 
-        let gauss = [1.0f32/8.0, 1.0/4.0, 1.0/8.0,
-                     1.0/4.0, 1.0/2.0, 1.0/4.0,
-                     1.0/8.0, 1.0/4.0, 1.0/8.0];
-        let edge = [-8.0f32, -8.0, -8.0,
-                    -8.0, 64.0, -8.0,
-                    -8.0, -8.0, -8.0];
-
         let horizontal_img = image::imageops::filter3x3(&terrain, &horizontal_sobel);
         let vertical_img = image::imageops::filter3x3(&terrain, &vertical_sobel);
         let horizontal_reverse_img = image::imageops::filter3x3(&terrain, &horizontal_reverse_sobel);
         let vertical_reverse_img = image::imageops::filter3x3(&terrain, &vertical_reverse_sobel);
-        
-        let edge_img = image::imageops::filter3x3(&terrain, &gauss);
-        let edge_img = image::imageops::filter3x3(&edge_img, &gauss);
-        let edge_img = image::imageops::filter3x3(&edge_img, &gauss);
-        let edge_img = image::imageops::filter3x3(&edge_img, &edge);
 
+        #[cfg(feature = "debug_images")]
+        {
+            let gauss = [1.0f32/8.0, 1.0/4.0, 1.0/8.0,
+                         1.0/4.0, 1.0/2.0, 1.0/4.0,
+                         1.0/8.0, 1.0/4.0, 1.0/8.0];
+            let edge = [-8.0f32, -8.0, -8.0,
+                        -8.0, 64.0, -8.0,
+                        -8.0, -8.0, -8.0];
 
-        // TODO Save only if debug images is enabled
-        horizontal_img.save("04a horizontal sobel.png").unwrap();
-        vertical_img.save("04b vertical sobel.png").unwrap();
-        edge_img.save("04c edge.png").unwrap();
+            let edge_img = image::imageops::filter3x3(&terrain, &gauss);
+            let edge_img = image::imageops::filter3x3(&edge_img, &gauss);
+            let edge_img = image::imageops::filter3x3(&edge_img, &gauss);
+            let edge_img = image::imageops::filter3x3(&edge_img, &edge);
+
+            horizontal_img.save("04a horizontal sobel.png").unwrap();
+            vertical_img.save("04b vertical sobel.png").unwrap();
+            edge_img.save("04c edge.png").unwrap();
+        }
 
         // Full Sobel
         let mut sobel_relief = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -167,7 +168,7 @@ impl Features {
             }
         }
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         sobel_relief.save("04d sobel.png").unwrap();
 
         // Full Scharr
@@ -191,7 +192,7 @@ impl Features {
             }
         }
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         scharr.save("04e scharr.png").unwrap();
 
         // Hilltops (double scharr)
@@ -229,7 +230,7 @@ impl Features {
             },
         );
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         hilltop.save("04f hilltop.png").unwrap();
 
         // scharr with low values removed
@@ -244,7 +245,7 @@ impl Features {
             }
         }
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         scharr_cleaned.save("04f scharr cleaned.png").unwrap();
 
         // Various features
@@ -297,12 +298,14 @@ impl Features {
             }
         }
 
-        // TODO Save only if debug images is enabled
-        water.save("05a water.png").unwrap();
-        fertile.save("05b fertile land.png").unwrap();
-        sand.save("05c sand.png").unwrap();
-        gravel.save("05d gravel.png").unwrap();
-        exposed_ore.save("05e exposed ore.png").unwrap();
+        #[cfg(feature = "debug_images")]
+        {
+            water.save("05a water.png").unwrap();
+            fertile.save("05b fertile land.png").unwrap();
+            sand.save("05c sand.png").unwrap();
+            gravel.save("05d gravel.png").unwrap();
+            exposed_ore.save("05e exposed ore.png").unwrap();
+        }
 
         // Forests
         let mut forest = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -319,9 +322,11 @@ impl Features {
             }
         }
 
-        // TODO Save only if debug images is enabled
-        forest.save("05f forest.png").unwrap();
-        snow.save("05g snow.png").unwrap();
+        #[cfg(feature = "debug_images")]
+        {
+            forest.save("05f forest.png").unwrap();
+            snow.save("05g snow.png").unwrap();
+        }
 
         // Water depth
         let mut water_depth = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -340,7 +345,7 @@ impl Features {
             }
         }
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         water_depth.save("06 water depth.png").unwrap();
 
         Self {

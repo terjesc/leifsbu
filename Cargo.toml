@@ -18,3 +18,5 @@ pathfinding = "2.1.4"
 rand = "0.8.5"
 simple_logger = { version = "2.1", default-features = false, features = ["stderr"] }
 
+[features]
+debug_images = []

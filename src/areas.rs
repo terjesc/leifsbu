@@ -78,7 +78,7 @@ impl Areas {
             }
         }
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         town.save("A-01 town.png").unwrap();
 
         town
@@ -97,7 +97,7 @@ impl Areas {
             2 * WOOD_CONNECTEDNESS_TRESHOLD,
         );
 
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         woodcutters.save("A-02 woodcutters.png").unwrap();
 
         woodcutters
@@ -134,9 +134,11 @@ impl Areas {
             }
         }
 
-        // TODO Save only if debug images is enabled
-        agriculture.save("A-03 agriculture.png").unwrap();
-        agriculture_without_trees.save("A-04 agriculture without trees.png").unwrap();
+        #[cfg(feature = "debug_images")]
+        {
+            agriculture.save("A-03 agriculture.png").unwrap();
+            agriculture_without_trees.save("A-04 agriculture without trees.png").unwrap();
+        }
 
         (agriculture, agriculture_without_trees)
     }

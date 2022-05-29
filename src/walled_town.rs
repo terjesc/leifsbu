@@ -1,13 +1,10 @@
 use std::cmp::{max, min};
 use std::f32::consts::TAU;
 
-use log::warn;
-
 use image::imageops::colorops::invert;
 use image::{GrayImage, RgbImage};
 use imageproc::contrast::*;
 use imageproc::distance_transform::*;
-use imageproc::drawing::draw_line_segment_mut;
 use imageproc::map::map_colors;
 use imageproc::morphology::*;
 use imageproc::suppress::suppress_non_maximum;
@@ -16,6 +13,9 @@ use mcprogedit::coordinates::BlockColumnCoord;
 use crate::types::*;
 use crate::Areas;
 use crate::Features;
+
+#[cfg(feature = "debug_images")]
+use imageproc::drawing::draw_line_segment_mut;
 
 /// Find the most suitable closed loop perimeter for a town wall.
 pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockColumnCoord) {
@@ -31,7 +31,7 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
         image::Luma([u8::MAX])
     );
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     not_town.save("T-01 not town.png").unwrap();
 
     // Mask for town circumference start circle
@@ -48,7 +48,7 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
         image::Luma([p[0].saturating_mul(p[0])])
     });
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     water_depth_energy
         .save("T-04 water depth energy.png")
         .unwrap();
@@ -62,7 +62,7 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
         image::Luma([p[0].saturating_mul(4)])
     });
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     offshore_distance_energy
         .save("T-05 offshore distance energy.png")
         .unwrap();
@@ -75,7 +75,7 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     threshold_mut(&mut slope_energy, 16u8);
     close_mut(&mut slope_energy, Norm::LInf, 3);
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     slope_energy.save("T-07 slope energy.png").unwrap();
 
     let mut energy = image::ImageBuffer::new(x_len as u32, z_len as u32);
@@ -102,13 +102,13 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
     imageproc::drawing::draw_hollow_rect_mut(&mut energy, imageproc::rect::Rect::at(1, 1).of_size(width - 2, height - 2) , image::Luma([u8::MAX]));
     imageproc::drawing::draw_hollow_rect_mut(&mut energy, imageproc::rect::Rect::at(2, 2).of_size(width - 4, height - 4) , image::Luma([u8::MIN]));
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     energy.save("T-10 energy.png").unwrap();
 
     // map of distance from (potential) town edge
     let town_density = distance_transform(&threshold(&energy, NEUTRAL_ENERGY), Norm::LInf);
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     town_density.save("T-02 town density.png").unwrap();
 
     // points the farthest away from (potential) town edge are potential town centers.
@@ -147,7 +147,7 @@ pub fn walled_town_contour(features: &Features, areas: &Areas) -> (Snake, BlockC
         );
     }
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     town_centers.save("T-03 town centers.png").unwrap();
 
     // TODO Maybe calculate and rate the N most promising locations?
@@ -201,6 +201,7 @@ fn snake_with_duplicate_points_removed(snake: &Snake) -> Snake {
 // Try to find a good walled town circumference
 fn walled_town_contour_internal(
     costs: &GrayImage,
+    #[allow(unused_variables)]
     map_img: &RgbImage,
     radius: u8,
     center: BlockColumnCoord,
@@ -215,14 +216,14 @@ fn walled_town_contour_internal(
     let num_points = radius as usize * 2;
     let mut snake = circle_snake(num_points, radius as usize, center, max);
 
-    // TODO Save only if debug images is enabled
+    #[cfg(feature = "debug_images")]
     save_snake_image(&snake, &map_img, &"acm_000.png".to_string());
 
+    #[allow(unused_variables)] // 'iteration' is used only for feature 'debug_images'
     for iteration in 1..=100 {
         let (s, _energy) = active_contour_model(snake.clone(), costs, ALPHA, BETA, GAMMA, INFLATE);
 
-//        /*
-        // TODO Save only if debug images is enabled
+        #[cfg(feature = "debug_images")]
         if iteration == 1 {
             save_snake_image(&snake, &map_img, &"acm_001.png".to_string());
         } else if iteration % 10 == 0 {
@@ -230,7 +231,6 @@ fn walled_town_contour_internal(
             save_snake_image(&snake, &map_img, &file_name);
             println!("Saved {}", file_name);
         }
-//        */
 
         snake = s;
     }
@@ -238,6 +238,7 @@ fn walled_town_contour_internal(
     snake_with_duplicate_points_removed(&snake)
 }
 
+#[cfg(feature = "debug_images")]
 pub fn draw_snake(image: &mut RgbImage, snake: &Snake) {
     const MARKER_RADIUS: i64 = 0;
     let (x_len, z_len) = image.dimensions();
@@ -263,6 +264,7 @@ pub fn draw_snake(image: &mut RgbImage, snake: &Snake) {
 }
 
 // Print a snake superimposed on an image
+#[cfg(feature = "debug_images")]
 pub fn save_snake_image(snake: &Snake, image: &RgbImage, path: &str) {
     let mut image = image.clone();
     draw_snake(&mut image, snake);
