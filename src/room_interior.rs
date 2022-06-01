@@ -1,11 +1,14 @@
+use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::convert::TryInto;
 
 use mcprogedit::block::Block;
 use mcprogedit::colour::Colour;
 use mcprogedit::coordinates::BlockCoord;
-use mcprogedit::positioning::Surface4;
+use mcprogedit::positioning::{Direction, Surface2, Surface4, Surface5};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
+use image::GrayImage;
 use log::warn;
 use rand::{Rng, thread_rng};
 
@@ -534,8 +537,6 @@ fn on_side_surface_directions(state_map: &InteriorPlacementStateMap, coordinates
 }
 
 fn any_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
-    // TODO on_floor_backed_directions + on_wall_diretions + from_ceiling_backed_directions +
-    // on_top_surface_backed_directions
     if let Some(state) = state_map.get(&coordinates) {
         if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
             return collection.iter()
@@ -632,14 +633,199 @@ fn place_hygiene(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementSt
     false
 }
 
-/// Place light sources
+/// Place light sources. Returns true if enough light sources was placed that the area is
+/// completely illuminated.
 fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
-    // TODO Keep some kind of overview of floor light level...
+    const LANTERN_BRIGHTNESS: usize = 15;
+    const TORCH_BRIGHTNESS: usize = 14;
 
-    // TODO Find lantern locations (on top of things, or hanging from ceiling)
-    // TODO Find torch locations (on walls)
+    // Internal function for getting light coordinates to remove
+    fn illuminated_coordinates(light_position: (usize, usize, usize), intensity: usize) -> Vec<(usize, usize)> {
+        const LIGHT_LEVEL_MIN: usize = 8;
+        let (light_x, light_y, light_z) = light_position;
+        let radius = intensity - light_y - LIGHT_LEVEL_MIN;
 
-    false
+        let mut output = Vec::new();
+
+        for x in light_x.saturating_sub(radius) .. light_x + radius + 1 {
+            for z in light_z.saturating_sub(radius) .. light_z + radius + 1 {
+                let distance_from_light = max(light_x, x) - min(light_x, x) + max(light_z, z) - min(light_z, z);
+                if distance_from_light <= radius {
+                    output.push((x, z));
+                }
+            }
+        }
+
+        output
+    }
+
+    // These are the positions that should get illuminated
+    let mut darkness_map: HashSet<(usize, usize)> = state_map.iter()
+        .map(|((x, _, z), _)| (*x, *z))
+        .collect();
+
+    // Potential lantern locations: Top surfaces.
+    let top_surface_positions: InteriorPlacementStateMap = state_map.iter()
+        .filter_map(|((x, y, z), state)| {
+            if let InteriorPlacementState::Available(collection)
+            | InteriorPlacementState::KeepOpen(collection) = state {
+                for option in collection {
+                    match option {
+                        PlacementOption::OnTopSurfaceFreestanding
+                        | PlacementOption::OnTopSurfaceBacked(_) => {
+                            if *y == 1 || *y == 2 {
+                                return Some(((*x, *y, *z), state.clone()));
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Potential lantern locations: Hanging from ceiling.
+    let ceiling_positions: InteriorPlacementStateMap = state_map.iter()
+        .filter_map(|((x, y, z), state)| {
+            if let InteriorPlacementState::Available(collection)
+            | InteriorPlacementState::KeepOpen(collection) = state {
+                for option in collection {
+                    match option {
+                        PlacementOption::FromCeilingFreestanding
+                        | PlacementOption::FromCeilingBacked(_) => {
+                            if *y >= 2 {
+                                return Some(((*x, *y, *z), state.clone()));
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Potential torch locations: On walls.
+    let torch_positions: InteriorPlacementStateMap = state_map.iter()
+        .filter_map(|((x, y, z), state)| {
+            if let InteriorPlacementState::Available(collection)
+            | InteriorPlacementState::KeepOpen(collection) = state {
+                for option in collection {
+                    match option {
+                        PlacementOption::OnWall(_)
+                        | PlacementOption::OnSideSurface(_) => {
+                            if *y >= 1 {
+                                return Some(((*x, *y, *z), state.clone()));
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Potential torch positions: On floor.
+    let floor_positions: InteriorPlacementStateMap = state_map.iter()
+        .filter_map(|((x, y, z), state)| {
+            if let InteriorPlacementState::Available(collection)
+            | InteriorPlacementState::KeepOpen(collection) = state {
+                for option in collection {
+                    match option {
+                        PlacementOption::OnFloorFreestanding
+                        | PlacementOption::OnFloorBacked(_) => {
+                            return Some(((*x, *y, *z), state.clone()));
+                        }
+                        _ => (),
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Put lanterns on surfaces
+    for ((x, y, z), _) in top_surface_positions {
+        if darkness_map.contains(&(x, z))
+        && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
+            // Place lantern
+            excerpt.set_block_at(
+                BlockCoord(x as i64, y as i64, z as i64),
+                Block::Lantern { mounted_at: Surface2::Down, waterlogged: false },
+            );
+            // Bookkeeping
+            state_map_mark_occupied_open(state_map, (x, y, z));
+            // Remove surroundings from darkness map
+            for surroundings in illuminated_coordinates((x, y, z), LANTERN_BRIGHTNESS) {
+                darkness_map.remove(&surroundings);
+            }
+        }
+    }
+
+    // TODO Lantern from ceiling
+
+    // Put torches on walls
+    for ((x, y, z), state) in torch_positions {
+        if darkness_map.contains(&(x, z))
+        && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
+            // Get torch attachment surface
+            let direction: Direction = on_wall_directions(state_map, (x, y, z))
+                .pop()
+                .expect("Torch positions are on wall, so we should get at least one direction match.")
+                .into();
+            let direction: Surface5 = direction
+                .try_into()
+                .expect("Going from Surface4 to Surface5 should be safe.");
+
+            // Place torch
+            excerpt.set_block_at(
+                BlockCoord(x as i64, y as i64, z as i64),
+                Block::Torch { attached: direction },
+            );
+            // Bookkeeping
+            state_map_mark_occupied_open(state_map, (x, y, z));
+            // Remove surroundings from darkness map
+            for surroundings in illuminated_coordinates((x, y, z), TORCH_BRIGHTNESS) {
+                darkness_map.remove(&surroundings);
+            }
+        }
+    }
+
+    // Last fallback: Put torch on floor
+    for ((x, y, z), state) in floor_positions {
+        if darkness_map.contains(&(x, z))
+        && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
+            // Place torch
+            excerpt.set_block_at(
+                BlockCoord(x as i64, y as i64, z as i64),
+                Block::Torch { attached: Surface5::Down },
+            );
+            // Bookkeeping
+            state_map_mark_occupied_open(state_map, (x, y, z));
+            // Remove surroundings from darkness map
+            for surroundings in illuminated_coordinates((x, y, z), TORCH_BRIGHTNESS) {
+                darkness_map.remove(&surroundings);
+            }
+        }
+    }
+
+    // TODO What to do if not completely lighted???
+
+    if darkness_map.is_empty() {
+        true
+    } else {
+        false
+    }
 }
 
 // TODO place_double_sleep
@@ -735,9 +921,12 @@ fn place_store(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStat
     false
 }
 
+// Utility functions for operating on InteriorPlacementStateMap
+////////////////////////////////////////////////////////////////
 
 fn state_map_mark_occupied_open(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
     state_map.insert(coordinates, InteriorPlacementState::OccupiedOpen);
+    // TODO Check first if already an Occupied state, and if so return an error.
 }
 
 fn state_map_mark_open(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
@@ -886,7 +1075,9 @@ pub fn furnish_cottage(room_shape: &RoomShape) -> Option<WorldExcerpt> {
     place_cooking(&mut output, &mut placement_state_map);
     place_store(&mut output, &mut placement_state_map);
     place_hygiene(&mut output, &mut placement_state_map);
-    // TODO Place also "top_surface", "light", "decor", another "sleep".
+    // TODO Place also "top_surface", "decor"
+
+    place_lighting(&mut output, &mut placement_state_map);
 
     place_single_sleep(&mut output, &mut placement_state_map);
 
