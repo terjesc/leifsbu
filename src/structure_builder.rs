@@ -10,8 +10,9 @@ use mcprogedit::block::{Block, Flower};
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 use mcprogedit::positioning::{Surface4, Surface5};
 use mcprogedit::world_excerpt::WorldExcerpt;
+
 use std::cmp::{max, min};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub fn _build_rock(
     excerpt: &WorldExcerpt,
@@ -401,8 +402,8 @@ pub fn build_house(
 
     // Calculate and place roof
     let roof_coordinates = calculate_roof_coordinates(&interior_neighbours, &buildable_interior, cornice_height);
-    for coordinates in roof_coordinates {
-        output.set_block_at(coordinates, palette.roof.clone());
+    for coordinates in &roof_coordinates {
+        output.set_block_at(*coordinates, palette.roof.clone());
 
         // If over internal parts: Clear down to cornice_height
         if buildable_interior.contains(&(coordinates.0 as usize, coordinates.2 as usize)) {
@@ -421,15 +422,32 @@ pub fn build_house(
         }
     }
 
+    let roof_height_lookup: HashMap<(usize, usize), usize> = roof_coordinates.iter()
+        .map(|BlockCoord(x, y, z)| ((*x as usize, *z as usize), *y as usize))
+        .collect();
+    let mut floor_levels: Vec<i64> = floor_levels.iter().copied().collect();
+    floor_levels.sort();
+    trace!("Floor levels: {:?}", floor_levels);
+
     // Place interior
     // For each floor
-    for y in &floor_levels {
+    for (index, y) in floor_levels.iter().enumerate() {
         // TODO Split into rooms if area is large.
 
         // Prepare room shape structure
         let mut room_shape = RoomShape::new((x_len, z_len));
         for coordinates in &buildable_interior {
-            room_shape.set_column_kind_at(*coordinates, ColumnKind::Floor);
+            let ceiling_height = if index < floor_levels.len() - 1 {
+                floor_levels[index + 1] as i64 - *y - 1
+            } else {
+                *roof_height_lookup.get(coordinates)
+                    .expect("If it's in buildable interior it should have a roof above.")
+                    as i64
+                    - *y
+                    - 1
+            };
+//            trace!("Ceiling height of {}", ceiling_height);
+            room_shape.set_column_kind_at(*coordinates, ColumnKind::Floor(ceiling_height as usize));
         }
         for coordinates in &interior_neighbours {
             room_shape.set_column_kind_at(*coordinates, ColumnKind::Wall);
@@ -447,11 +465,8 @@ pub fn build_house(
             }
         }
 
-        // TODO Implement and call function for furnishing "cottage" instead.
-        //      (for now, later there might be multiple functions depending on plot size
-        //      and/or other factors.)
-
-        // Furnish the room
+        // Furnish as "cottage" (for now, later there may be multiple functions depending on plot
+        // size and other factors.)
         if let Some(interior) = furnish_cottage(&room_shape) {
             output.paste(BlockCoord(0, *y + 1, 0), &interior);
         }

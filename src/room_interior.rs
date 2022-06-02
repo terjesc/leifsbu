@@ -5,11 +5,11 @@ use std::convert::TryInto;
 use mcprogedit::block::Block;
 use mcprogedit::colour::Colour;
 use mcprogedit::coordinates::BlockCoord;
-use mcprogedit::positioning::{Direction, Surface2, Surface4, Surface5};
+use mcprogedit::positioning::{Axis3, Direction, Surface2, Surface4, Surface5};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
 use image::GrayImage;
-use log::warn;
+use log::{trace, warn};
 use rand::{Rng, thread_rng};
 
 
@@ -22,7 +22,7 @@ pub enum ColumnKind {
     Wall, // Solid wall
     Window, // Wall with 1 m window starting 1 m above floor level
     Door, // Wall with door on floor level
-    Floor, // Open area inside room TODO add height to ceiling as well?
+    Floor(usize), // Open area inside room, usize gives height under ceiling
 }
 
 /// 2D structural map of the room.
@@ -54,6 +54,16 @@ impl RoomShape {
     /// Get the dimensions of this RoomShape, as `(x_dimension, z_dimension)`.
     pub fn dimensions(&self) -> (usize, usize) {
         (self.x_dim, self.z_dim)
+    }
+
+    /// Get the highest ceiling height of this RoomShape
+    pub fn highest_ceiling(&self) -> Option<usize> {
+        self.columns.iter()
+            .map(|column_kind| match column_kind {
+                ColumnKind::Floor(height) => *height,
+                _ => 0,
+            })
+            .max()
     }
 
     /// Set the column kind at the (x, z) location `coordinates` to the given column kind.
@@ -123,23 +133,23 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
     let mut output = HashMap::new();
 
     let (x_len, z_len) = room_shape.dimensions();
-    let height = 2; // TODO get actual ceiling heights from the room_shape instead, in below for loops
+    //let height = 2; // TODO get actual ceiling heights from the room_shape instead, in below for loops
 
     for x in 0..x_len {
         for z in 0..z_len {
-            if let Some(ColumnKind::Floor) = room_shape.column_kind_at((x, z)) {
-                for height in 0..height {
+            if let Some(ColumnKind::Floor(ceiling_height)) = room_shape.column_kind_at((x, z)) {
+                for height in 0..ceiling_height {
                     let mut available_placements = PlacementOptionCollection::new();
                     let neighbourhood_coordinates = neighbourhood_4((x, z));
                     let mut must_be_kept_open = false;
 
                     if height == 0 {
                         // Ground level
-                        for neighbour_coordinates in neighbourhood_coordinates {
-                            match room_shape.column_kind_at(neighbour_coordinates) {
+                        for neighbour_coordinates in &neighbourhood_coordinates {
+                            match room_shape.column_kind_at(*neighbour_coordinates) {
                                 Some(ColumnKind::Wall)
                                 | Some(ColumnKind::Window) => {
-                                    let direction = neighbour_direction((x, z), neighbour_coordinates);
+                                    let direction = neighbour_direction((x, z), *neighbour_coordinates);
                                     available_placements.insert(PlacementOption::OnFloorBacked(direction));
                                 }
                                 Some(ColumnKind::Door) => must_be_kept_open = true,
@@ -149,12 +159,12 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
                         if available_placements.is_empty() {
                             available_placements.insert(PlacementOption::OnFloorFreestanding);
                         }
-                    } else {
+                    } else if height == 1 {
                         // Window level
-                        for neighbour_coordinates in neighbourhood_coordinates {
-                            match room_shape.column_kind_at(neighbour_coordinates) {
+                        for neighbour_coordinates in &neighbourhood_coordinates {
+                            match room_shape.column_kind_at(*neighbour_coordinates) {
                                 Some(ColumnKind::Wall) => {
-                                    let direction = neighbour_direction((x, z), neighbour_coordinates);
+                                    let direction = neighbour_direction((x, z), *neighbour_coordinates);
                                     available_placements.insert(PlacementOption::OnWall(direction));
                                 }
                                 Some(ColumnKind::Window)
@@ -162,13 +172,39 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
                                 _ => (),
                             }
                         }
+                    } else if height > 1 {
+                        // Above window
+                        for neighbour_coordinates in &neighbourhood_coordinates {
+                            match room_shape.column_kind_at(*neighbour_coordinates) {
+                                Some(ColumnKind::Wall)
+                                | Some(ColumnKind::Window)
+                                | Some(ColumnKind::Door) => {
+                                    let direction = neighbour_direction((x, z), *neighbour_coordinates);
+                                    available_placements.insert(PlacementOption::OnWall(direction));
+                                }
+                                _ => (),
+                            }
+                        }
                     }
-                    // TODO intermediate levels (above windows)
-                    //      * Add OnWall(surface) for each wall neighbour
-                    //      * NB No windows or doors on those levels! (At least not yet)
-                    // TODO highest (next to ceiling) level
-                    //      * Add FromCeilingBacked(surface) for each wall neighbour
-                    //      * Add FromCeilingFreestanding if nothing yet
+                    // Touching ceiling
+                    if height == ceiling_height - 1 {
+                        for neighbour_coordinates in &neighbourhood_coordinates {
+                            match room_shape.column_kind_at(*neighbour_coordinates) {
+                                Some(ColumnKind::Wall)
+                                | Some(ColumnKind::Window)
+                                | Some(ColumnKind::Door) => {
+                                    let direction = neighbour_direction((x, z), *neighbour_coordinates);
+                                    available_placements.insert(PlacementOption::FromCeilingBacked(direction));
+//                                    trace!("Found backed ceiling position at height {}!", height);
+                                }
+                                _ => (),
+                            }
+                        }
+                        if available_placements.is_empty() {
+                            available_placements.insert(PlacementOption::FromCeilingFreestanding);
+//                            trace!("Found freestanding ceiling position at height {}!", height);
+                        }
+                    }
 
                     let interior_placement_state = if must_be_kept_open {
                         InteriorPlacementState::KeepOpen(available_placements)
@@ -719,7 +755,7 @@ fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementS
                     match option {
                         PlacementOption::OnWall(_)
                         | PlacementOption::OnSideSurface(_) => {
-                            if *y >= 1 {
+                            if *y == 1 || *y == 2 {
                                 return Some(((*x, *y, *z), state.clone()));
                             }
                         }
@@ -772,8 +808,6 @@ fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementS
         }
     }
 
-    // TODO Lantern from ceiling
-
     // Put torches on walls
     for ((x, y, z), state) in torch_positions {
         if darkness_map.contains(&(x, z))
@@ -801,6 +835,41 @@ fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementS
         }
     }
 
+    // Put lantern in chain from ceiling
+    const LANTERN_HEIGHT: usize = 3;
+    'outer: for ((x, y, z), _) in ceiling_positions {
+        if darkness_map.contains(&(x, z))
+        && y >= LANTERN_HEIGHT {
+            for y in LANTERN_HEIGHT..=y {
+                if !is_nonblocking_safe(&state_map, &[(x, y, z)]) {
+                    continue 'outer;
+                }
+            }
+
+            for y in LANTERN_HEIGHT + 1..=y {
+                // Place chain
+                excerpt.set_block_at(
+                    BlockCoord(x as i64, y as i64, z as i64),
+                    Block::Chain { alignment: Axis3::Y },
+                );
+                // Bookkeeping
+                state_map_mark_occupied_open(state_map, (x, y, z));
+            }
+
+            // Place lantern
+            excerpt.set_block_at(
+                BlockCoord(x as i64, LANTERN_HEIGHT as i64, z as i64),
+                Block::Lantern { mounted_at: Surface2::Up, waterlogged: false },
+            );
+            // Bookkeeping
+            state_map_mark_occupied_open(state_map, (x, LANTERN_HEIGHT, z));
+            // Remove surroundings from darnkess map
+            for surroundings in illuminated_coordinates((x, LANTERN_HEIGHT, z), LANTERN_BRIGHTNESS) {
+                darkness_map.remove(&surroundings);
+            }
+        }
+    }
+
     // Last fallback: Put torch on floor
     for ((x, y, z), state) in floor_positions {
         if darkness_map.contains(&(x, z))
@@ -820,6 +889,10 @@ fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementS
     }
 
     // TODO What to do if not completely lighted???
+    // Probably one should operate with two maps: One "no go zone" around where a light source was
+    // placed, for not placing light sources too closely, and one keeping track of light levels.
+    // That way, in order to reach all areas with light there are always more than one option for
+    // where to put the final light source and higher chanse to actually succeed.
 
     if darkness_map.is_empty() {
         true
@@ -1069,7 +1142,15 @@ pub fn furnish_cottage(room_shape: &RoomShape) -> Option<WorldExcerpt> {
     let mut placement_state_map = interior_placement_state_map_from_room_shape(&room_shape);
 
     let (x, z) = room_shape.dimensions();
-    let mut output = WorldExcerpt::new(x, 2, z);
+    if x == 0 || z == 0 {
+        // The room shape is empty, nothing to do here.
+        return None;
+    }
+
+    let y = room_shape.highest_ceiling()
+        .expect("We know the room shape is not empty, so we should have at least one height.");
+
+    let mut output = WorldExcerpt::new(x, y, z);
 
     place_single_sleep(&mut output, &mut placement_state_map);
     place_cooking(&mut output, &mut placement_state_map);
