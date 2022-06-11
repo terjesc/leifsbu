@@ -69,20 +69,11 @@ pub fn build_house(
     // Get height map for the area
     let mut height_map = excerpt.ground_height_map();
 
-    /*
-    // FIXME remove: Mark an outline of "buildable area".
-    for (x, z) in &buildable_edge {
-        let y = height_map.height_at((*x, *z)).unwrap_or(255);
-        let coordinates = BlockCoord(*x as i64, y as i64, *z as i64);
-        output.set_block_at(coordinates, Block::Glass { colour: Some(mcprogedit::colour::Colour::Red) });
-    }
-    */
-
-    // TODO exclude areas too thin, not contiguous, etc. (assign road or yard to thinned out parts)
     let mut buildable_interior: HashSet<(usize, usize)> = buildable.difference(&buildable_edge).copied().collect();
 
     // Remove from buildable_interior too thin portions. Iteratively remove from buildable_interior
     // any cell which has two or less neighbouring interior cells, in the 8-neighbourhood.
+    // TODO keep track of front of house (road) vs back of house (yard).
     let mut changes = 1;
     while changes > 0 {
         changes = 0;
@@ -118,15 +109,6 @@ pub fn build_house(
         return None;
     }
 
-/*
-    // FIXME remove: Mark interior.
-    for (x, z) in &buildable_interior {
-        let y = height_map.height_at((*x, *z)).unwrap_or(255);
-        let coordinates = BlockCoord(*x as i64, y as i64, *z as i64);
-        output.set_block_at(coordinates, Block::Glass { colour: Some(mcprogedit::colour::Colour::Yellow) });
-    }
-*/
-
     // Cells from the 8-neighbourhood of the interior, are outer walls.
     let mut interior_neighbours: HashSet<(usize, usize)> = HashSet::new();
 
@@ -139,15 +121,6 @@ pub fn build_house(
             }
         }
     }
-
-/*
-    // FIXME remove: Mark actual wall.
-    for (x, z) in &interior_neighbours {
-        let y = height_map.height_at((*x, *z)).unwrap_or(255);
-        let coordinates = BlockCoord(*x as i64, y as i64, *z as i64);
-        output.set_block_at(coordinates, Block::Glass { colour: Some(mcprogedit::colour::Colour::Blue) });
-    }
-*/
 
     #[derive(Debug, Eq, Hash, PartialEq)]
     struct DoorPlacement {
@@ -168,7 +141,7 @@ pub fn build_house(
     }
 
     for (x, z) in &interior_neighbours {
-        for direction in [Surface4::North, Surface4::South, Surface4::East, Surface4::West] {
+        'directions: for direction in [Surface4::North, Surface4::South, Surface4::East, Surface4::West] {
             if buildable_interior.contains(&coordinates_in_direction(&(*x, *z), &direction, 1))
             && interior_neighbours.contains(&coordinates_in_direction(&(*x, *z), &direction.rotated_90_cw(), 1))
             && interior_neighbours.contains(&coordinates_in_direction(&(*x, *z), &direction.rotated_90_ccw(), 1)) {
@@ -186,8 +159,7 @@ pub fn build_house(
                                     height: height as usize,
                                     facing: direction,
                                 });
-                                // TODO break two loops here?
-                                break;
+                                break 'directions;
                             } else {
                                 break;
                             }
@@ -198,15 +170,6 @@ pub fn build_house(
         }
     }
 
-    /*
-    // FIXME remove: Possible door positions.
-    for door_position in &possible_door_positions {
-        let (x, y, z) = (door_position.coordinates.0, door_position.height, door_position.coordinates.1);
-        let coordinates = BlockCoord(x as i64, y as i64, z as i64);
-        output.set_block_at(coordinates, Block::Glass { colour: Some(mcprogedit::colour::Colour::Gray) });
-    }
-    */
-
     // If there are no door positions, generation fails:
     if possible_door_positions.is_empty() {
         return None;
@@ -215,24 +178,6 @@ pub fn build_house(
     // Find highest and lowest possible door position.
     let highest_door_position = possible_door_positions.iter().max_by(|a, b| a.height.cmp(&b.height)).unwrap();
     let lowest_door_position = possible_door_positions.iter().max_by(|a, b| b.height.cmp(&a.height)).unwrap();
-
-    /*
-    // TODO remove: (one of the) highest possible door placements
-    let (x, y, z) = (highest_door_position.coordinates.0, highest_door_position.height, highest_door_position.coordinates.1);
-    let highest_door_position_coordinates = BlockCoord(x as i64, y as i64, z as i64);
-    output.set_block_at(highest_door_position_coordinates, Block::BlockOfDiamond);
-    let highest_door_position_coordinates = BlockCoord(x as i64, y as i64 + 1, z as i64);
-    output.set_block_at(highest_door_position_coordinates, Block::BlockOfDiamond);
-    */
-
-    /*
-    // TODO remove: (one of the) lowest possible door placements
-    let (x, y, z) = (lowest_door_position.coordinates.0, lowest_door_position.height, lowest_door_position.coordinates.1);
-    let lowest_door_position_coordinates = BlockCoord(x as i64, y as i64, z as i64);
-    output.set_block_at(lowest_door_position_coordinates, Block::BlockOfGold);
-    let lowest_door_position_coordinates = BlockCoord(x as i64, y as i64 + 1, z as i64);
-    output.set_block_at(lowest_door_position_coordinates, Block::BlockOfGold);
-    */
 
     let door_position_height_diff = highest_door_position.height - lowest_door_position.height;
 
@@ -446,7 +391,6 @@ pub fn build_house(
                     - *y
                     - 1
             };
-//            trace!("Ceiling height of {}", ceiling_height);
             room_shape.set_column_kind_at(*coordinates, ColumnKind::Floor(ceiling_height as usize));
         }
         for coordinates in &interior_neighbours {

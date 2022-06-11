@@ -3,9 +3,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryInto;
 
 use mcprogedit::block::Block;
+use mcprogedit::bounded_ints::*;
 use mcprogedit::colour::Colour;
 use mcprogedit::coordinates::BlockCoord;
-use mcprogedit::positioning::{Axis3, Direction, Surface2, Surface4, Surface5};
+use mcprogedit::positioning::{
+    Axis3, Direction, Direction16, DirectionFlags6, Surface2, Surface4, Surface5, WallOrRotatedOnFloor,
+};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
 use image::GrayImage;
@@ -133,7 +136,6 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
     let mut output = HashMap::new();
 
     let (x_len, z_len) = room_shape.dimensions();
-    //let height = 2; // TODO get actual ceiling heights from the room_shape instead, in below for loops
 
     for x in 0..x_len {
         for z in 0..z_len {
@@ -195,14 +197,12 @@ fn interior_placement_state_map_from_room_shape(room_shape: &RoomShape) -> Inter
                                 | Some(ColumnKind::Door) => {
                                     let direction = neighbour_direction((x, z), *neighbour_coordinates);
                                     available_placements.insert(PlacementOption::FromCeilingBacked(direction));
-//                                    trace!("Found backed ceiling position at height {}!", height);
                                 }
                                 _ => (),
                             }
                         }
                         if available_placements.is_empty() {
                             available_placements.insert(PlacementOption::FromCeilingFreestanding);
-//                            trace!("Found freestanding ceiling position at height {}!", height);
                         }
                     }
 
@@ -449,6 +449,46 @@ fn available_on_floor(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, 
     available_on_floor_backed(state_map).union(&available_on_floor_freestanding(state_map)).copied().collect()
 }
 
+fn any_on_top_surface_backed(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if let InteriorPlacementState::Available(placement_collection)
+            | InteriorPlacementState::KeepOpen(placement_collection) = state {
+                for placement_option in placement_collection {
+                    if let PlacementOption::OnTopSurfaceBacked(_) = placement_option {
+                        return Some(*coordinates);
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn any_on_top_surface_freestanding(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if let InteriorPlacementState::Available(placement_collection)
+            | InteriorPlacementState::KeepOpen(placement_collection) = state {
+                for placement_option in placement_collection {
+                    if let PlacementOption::OnTopSurfaceFreestanding = placement_option {
+                        return Some(*coordinates);
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn any_on_top_surface(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    any_on_top_surface_backed(state_map).union(&any_on_top_surface_freestanding(state_map)).copied().collect()
+}
+
 /// Returns set of coordinates on layers 0 and 1, where the coordinate for both layers are open.
 fn walkable(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
     let open_floor_map: HashSet<(usize, usize)> = state_map.iter()
@@ -594,8 +634,147 @@ fn any_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, us
     Vec::new()
 }
 
+/// Helper object for object placemnent planning
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct ObjectAnchor {
+    coordinates: (usize, usize, usize),
+    wall_direction: Surface4,
+    length_along_wall: usize,
+}
+
+impl ObjectAnchor {
+    fn coordinate_list(&self) -> Vec<(usize, usize, usize)> {
+        let mut list = Vec::new();
+
+        let mut bottom = self.coordinates;
+
+        for _ in 0..self.length_along_wall {
+            // Add coordinates at location and above
+            list.push(bottom);
+            list.push((bottom.0, bottom.1 + 1, bottom.2));
+
+            // Update bottom for next iteration
+            if let Some(coordinates) = neighbour_in_direction_3d(bottom, self.wall_direction.rotated_90_cw()) {
+                bottom = coordinates;
+            } else {
+                break;
+            }
+        }
+
+        list
+    }
+}
+
 // Functions for placing objects / fulfilling room requirement
 ///////////////////////////////////////////////////////////////
+
+/// Place a bookshelf (on top of which other things can be placed.)
+fn place_bookshelf(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
+
+    fn is_suitable_for_two_layer_top_surface(
+        state_map: &InteriorPlacementStateMap,
+        location: (usize, usize, usize),
+        wall_direction: Surface4,
+    ) -> bool {
+        if let Some(in_front) = neighbour_in_direction_3d(location, wall_direction.opposite()) {
+            let above = (location.0, location.1 + 1, location.2);
+            let two_above = (location.0, location.1 + 2, location.2);
+            let in_front_above = (in_front.0, in_front.1 + 2, in_front.2);
+            let in_front_two_above = (in_front.0, in_front.1 + 2, in_front.2);
+
+            is_blocking_safe(state_map, &[location, above])
+                && is_open(state_map, two_above)
+                && is_open(state_map, in_front)
+                && is_open(state_map, in_front_above)
+                && is_open(state_map, in_front_two_above)
+        } else {
+            false
+        }
+    }
+
+    let two_layer_opportunities: HashSet<ObjectAnchor> = available_on_floor_backed(&state_map)
+        .into_iter()
+        .map(|location| {
+            let output: Vec<ObjectAnchor> = on_floor_backed_directions(state_map, location)
+                .into_iter()
+                .filter_map(|wall_direction| {
+                    if !is_suitable_for_two_layer_top_surface(state_map, location, wall_direction) {
+                        None
+                    } else {
+                        let direction_along_wall = wall_direction.rotated_90_cw();
+                        let mut length_along_wall = 0;
+                        let mut extension_location = location;
+
+                        while is_suitable_for_two_layer_top_surface(state_map, extension_location, wall_direction) {
+                            length_along_wall += 1;
+                            if let Some(next_extension_location) = neighbour_in_direction_3d(
+                                extension_location,
+                                direction_along_wall,
+                            ) {
+                                extension_location = next_extension_location;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        Some(
+                            ObjectAnchor {
+                                coordinates: location,
+                                wall_direction,
+                                length_along_wall,
+                            }
+                        )
+                    }
+                })
+                .collect();
+            output
+        })
+        // for direction in on_floor_backed_directions(state_map, location)
+        .flatten()
+        .collect();
+
+    //trace!("{:#?}", two_layer_opportunities);
+    // TODO instead of only finding the longest, sort by length, allows for access checking
+    let longest_opportunity = two_layer_opportunities.iter()
+        .filter(|x| x.length_along_wall <= 3)
+        .max_by(|x, y| x.length_along_wall.cmp(&y.length_along_wall));
+    trace!("Longest two high surface opportunity: {:#?}", longest_opportunity);
+
+    if let Some(bookshelf) = longest_opportunity {
+        let bookshelf_coordinates = bookshelf.coordinate_list();
+        trace!("Bookshelf coordinates: {:?}", bookshelf_coordinates);
+
+        if is_blocking_safe(state_map, &bookshelf_coordinates) {
+            // Place blocks
+            for location in &bookshelf_coordinates {
+                // Place block
+                excerpt.set_block_at(
+                    BlockCoord(location.0 as i64, location.1 as i64, location.2 as i64),
+                    Block::Bookshelf,
+                );
+                state_map_mark_blocking(state_map, *location);
+
+                // Keep front open
+                if let Some(neighbour) = neighbour_in_direction_3d(*location, bookshelf.wall_direction.opposite()) {
+                    state_map_mark_open(state_map, neighbour);
+                }
+
+                // Register top surface
+                let on_top = (location.0, location.1 + 1, location.2);
+                if !bookshelf_coordinates.contains(&on_top) {
+                    state_map_add_top_surface(state_map, on_top);
+                    // Place top surface on top
+                }
+            }
+
+            return true;
+        }
+    }
+
+    // TODO If unable to put two high bookshelf, try one high (of length 1-4)
+
+    false
+}
 
 /// Place objects fulfilling the "cooking" requirement, e.g. a furnace, or smoker.
 fn place_cooking(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
@@ -632,6 +811,110 @@ fn place_cooking(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementSt
             }
         }
     }
+
+    false
+}
+
+/// Place one object fulfilling the "decor" requirement.
+fn place_decor(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
+    let mut rng = thread_rng();
+
+    // 1) TODO Freestanding on floor NB may need armour stand
+    // 2) TODO On floor NB may need armour stand
+
+    // 3) "normal" top surface: Flower pot, skull, sea pickle, turtle egg, etc.
+    for location in any_on_top_surface(state_map) {
+        let block = match rng.gen_range(0..=9) {
+            0 => Block::FlowerPot(mcprogedit::block::FlowerPot::new_empty()),
+            1 | 2 | 3 | 4 | 5 | 6 => {
+                // TODO find a better suited distribution / maybe remove some plant types
+                let plant = match rng.gen_range(0..=28) {
+                    0 => mcprogedit::block::PottedPlant::AcaciaSapling,
+                    1 => mcprogedit::block::PottedPlant::Allium,
+                    2 => mcprogedit::block::PottedPlant::AzureBluet,
+                    3 => mcprogedit::block::PottedPlant::Bamboo,
+                    4 => mcprogedit::block::PottedPlant::BirchSapling,
+                    5 => mcprogedit::block::PottedPlant::BlueOrchid,
+                    6 => mcprogedit::block::PottedPlant::BrownMushroom,
+                    7 => mcprogedit::block::PottedPlant::Cactus,
+                    8 => mcprogedit::block::PottedPlant::Cornflower,
+                    9 => mcprogedit::block::PottedPlant::CrimsonFungus,
+                    10 => mcprogedit::block::PottedPlant::CrimsonRoots,
+                    11 => mcprogedit::block::PottedPlant::Dandelion,
+                    12 => mcprogedit::block::PottedPlant::DarkOakSapling,
+                    13 => mcprogedit::block::PottedPlant::DeadBush,
+                    14 => mcprogedit::block::PottedPlant::Fern,
+                    15 => mcprogedit::block::PottedPlant::JungleSapling,
+                    16 => mcprogedit::block::PottedPlant::LilyOfTheValley,
+                    17 => mcprogedit::block::PottedPlant::OakSapling,
+                    18 => mcprogedit::block::PottedPlant::OxeyeDaisy,
+                    19 => mcprogedit::block::PottedPlant::Poppy,
+                    20 => mcprogedit::block::PottedPlant::RedMushroom,
+                    21 => mcprogedit::block::PottedPlant::SpruceSapling,
+                    22 => mcprogedit::block::PottedPlant::TulipOrange,
+                    23 => mcprogedit::block::PottedPlant::TulipPink,
+                    24 => mcprogedit::block::PottedPlant::TulipRed,
+                    25 => mcprogedit::block::PottedPlant::TulipWhite,
+                    26 => mcprogedit::block::PottedPlant::WarpedFungus,
+                    27 => mcprogedit::block::PottedPlant::WarpedRoots,
+                    28 => mcprogedit::block::PottedPlant::WitherRose,
+                    _ => unreachable!(),
+                };
+                Block::FlowerPot(mcprogedit::block::FlowerPot::new_with_plant(plant))
+            },
+            /* TODO head (skull), needs work in mcprogedit
+            7 => Block::Head(mcprogedit::block::Head {
+                variant: mcprogedit::block::HeadVariant::SkeletonSkull,
+                placement: WallOrRotatedOnFloor::Floor(Direction16::North),
+                waterlogged: false,
+            }),
+            */
+            8 => Block::SeaPickle {
+                count: Int1Through4::new(rng.gen_range(1..=4)).unwrap(),
+                waterlogged: false,
+            },
+            9 => Block::TurtleEgg {
+                count: Int1Through4::new(rng.gen_range(1..=4)).unwrap(),
+                age: Int0Through2::new(0).unwrap(),
+            },
+            _ => {
+                if location.1 == 1 && rng.gen_range(0..10) == 0 {
+                    Block::cake_with_remaining_pieces(rng.gen_range(1..10))
+                } else {
+                    Block::Air // leave empty
+                }
+            }
+        };
+
+        excerpt.set_block_at(
+            BlockCoord(location.0 as i64, location.1 as i64, location.2 as i64),
+            block,
+        );
+        state_map_mark_occupied_open(state_map, location);
+        // TODO no need to keep surrounding blocks open?
+
+        return true;
+    }
+
+    // TODO
+    // * "Large plant" (any floor freestanding with all sides open)
+    //      - Podzol with open trapdoors on all sides
+    //      - Fence post as "stem"
+    //      - Leaves on top (persistent leaves)
+    //      - Optional: Vines on sides of leaves?
+
+    // 4) TODO Object hanging on wall
+    // Objects:
+    //      Tripwire hook (pretend to be clothes hook) NB need closeness to door
+    //      Paintings NB need painting
+    //      Clock NB need item frame
+    //      Map NB need item frame and map
+    //      Banner
+
+    // TODO Undecided:
+    // * Bookshelf (is it decor or is it "top surface" (or is it both?)
+    // * Jukebox
+    // * Carpet
 
     false
 }
@@ -819,7 +1102,7 @@ fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementS
                 .into();
             let direction: Surface5 = direction
                 .try_into()
-                .expect("Going from Surface4 to Surface5 should be safe.");
+                .expect("Converting from Surface4 to Surface5 should be safe.");
 
             // Place torch
             excerpt.set_block_at(
@@ -994,6 +1277,84 @@ fn place_store(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStat
     false
 }
 
+/// Place one object providing a top surface for another object to rest on.
+fn place_top_surface(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
+    // TODO maybe use a "budget" argument, have a number of options ordered from large to small,
+    // and create the largest one possible within the budget?
+
+//    let walkable_tiles = walkable(&state_map);
+
+    let mut rng = thread_rng();
+    let die_roll = rng.gen_range(0..5);
+
+    // A moderate chance of trying to place a bookshelf.
+    match die_roll {
+        0 => if place_bookshelf(excerpt, state_map) {
+            return true;
+        }
+        1 | 2 => (), // TODO place something on bottom layer
+        3 | 4 => (), // TODO place something on hihger layer
+        _ => unreachable!(),
+    }
+
+    // TODO Try everything once more if first attempt failed
+
+
+    // TODO Remaining sizes / placements to implement:
+    //
+    //  Bottom layer
+    //      * 1x3: Bookshelf, low shelf, table (0 or 2 chairs)
+    //      * 1x2: Bookshelf, low shelf, table (0 or 1 chair)
+    //      * 1x1: Bookshelf, low shelf, table
+    //
+    //  Higher layers
+    //      * 1x3: High shelf
+    //      * 1x2: High shelf
+    //      * 1x1: High shelf
+
+    // Low shelves
+    // Trapdoor at y=0 top
+    // y=1 free
+    // along wall
+    // walkable opposite wall
+    // length 3, 2 or 1 (along wall)
+
+    // High shelves
+    // Trapdoor at y=1 top
+    // y=2 free
+    // along wall
+    // walkable opposite wall
+    // y=2 free opposite wall
+    // length 3, 2 or 1 (along wall)
+
+    // Small tables
+    // 1x1 (single block)
+    // Scaffolding / bookshelf / etc.
+    // Along wall
+    // Cornered is a plus
+    // Walkable away from wall
+    // Optionally chair along wall
+
+    false
+}
+
+// Utility functions for placing objects
+/////////////////////////////////////////
+
+// TODO Figure out if it makes sense to make shortcut function handling the nitty gritty. The
+// rationale is that given certain properties, the code for placing the object can be shared
+// between multiple placement functions.
+/// Place a blocking object resting against a surface behind it, with a reachable walkable area in front.
+fn place_blocking_helper(
+    excerpt: &mut WorldExcerpt,
+    state_map: &mut InteriorPlacementStateMap,
+    object: Block, // Block, facing North. NB Depends on getting a rotate() function for Block.
+    open_areas: DirectionFlags6, // Which block boundaries of 'object' must be kept open.
+    surfaces: DirectionFlags6, // Which block boundaries of 'object' act as surfaces.
+) -> bool {
+    unimplemented!();
+}
+
 // Utility functions for operating on InteriorPlacementStateMap
 ////////////////////////////////////////////////////////////////
 
@@ -1156,15 +1517,13 @@ pub fn furnish_cottage(room_shape: &RoomShape) -> Option<WorldExcerpt> {
     place_cooking(&mut output, &mut placement_state_map);
     place_store(&mut output, &mut placement_state_map);
     place_hygiene(&mut output, &mut placement_state_map);
-    // TODO Place also "top_surface", "decor"
-
+    place_top_surface(&mut output, &mut placement_state_map);
     place_lighting(&mut output, &mut placement_state_map);
-
+    place_store(&mut output, &mut placement_state_map);
+    place_decor(&mut output, &mut placement_state_map);
     place_single_sleep(&mut output, &mut placement_state_map);
-
-    // TODO Put down a reasonable number of beds, not as many as the algorithm is able to fit!
-    while place_single_sleep(&mut output, &mut placement_state_map) {}
-
+    // TODO Place some workstation? Crafting bench, loom, or other?
+    while place_decor(&mut output, &mut placement_state_map) {}
 
     Some(output)
 }
