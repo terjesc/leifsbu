@@ -6,12 +6,9 @@ use mcprogedit::block::Block;
 use mcprogedit::bounded_ints::*;
 use mcprogedit::colour::Colour;
 use mcprogedit::coordinates::BlockCoord;
-use mcprogedit::positioning::{
-    Axis3, Direction, Direction16, DirectionFlags6, Surface2, Surface4, Surface5, WallOrRotatedOnFloor,
-};
+use mcprogedit::positioning::{Axis3, Direction, DirectionFlags6, Surface2, Surface4, Surface5};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
-use image::GrayImage;
 use log::{trace, warn};
 use rand::{Rng, thread_rng};
 
@@ -353,7 +350,7 @@ fn neighbour_direction(current: (usize, usize), neighbour: (usize, usize)) -> Su
     }
 }
 
-fn neighbour_in_direction(current: (usize, usize), direction: Surface4) -> Option<(usize, usize)> {
+fn _neighbour_in_direction(current: (usize, usize), direction: Surface4) -> Option<(usize, usize)> {
     let (x, z) = current;
     match direction {
         Surface4::West => if x > 0 { Some((x - 1, z)) } else { None },
@@ -449,7 +446,87 @@ fn available_on_floor(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, 
     available_on_floor_backed(state_map).union(&available_on_floor_freestanding(state_map)).copied().collect()
 }
 
-fn any_on_top_surface_backed(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+fn placeable_on_floor_backed(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if let InteriorPlacementState::Available(placement_collection)
+            | InteriorPlacementState::KeepOpen(placement_collection) = state {
+                for placement_option in placement_collection {
+                    if let PlacementOption::OnFloorBacked(_) = placement_option {
+                        return Some(*coordinates);
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn placeable_on_floor_freestanding(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if let InteriorPlacementState::Available(placement_collection)
+            | InteriorPlacementState::KeepOpen(placement_collection) = state {
+                for placement_option in placement_collection {
+                    if let PlacementOption::OnFloorFreestanding = placement_option {
+                        return Some(*coordinates);
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn placeable_on_floor(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    placeable_on_floor_backed(state_map).union(&placeable_on_floor_freestanding(state_map)).copied().collect()
+}
+
+fn placeable_on_wall(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if let InteriorPlacementState::Available(placement_collection)
+            | InteriorPlacementState::KeepOpen(placement_collection) = state {
+                for placement_option in placement_collection {
+                    if let PlacementOption::OnWall(_) = placement_option {
+                        return Some(*coordinates);
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn placeable_on_side_surface(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    state_map.iter()
+        .filter_map(|(coordinates, state)| {
+            if let InteriorPlacementState::Available(placement_collection)
+            | InteriorPlacementState::KeepOpen(placement_collection) = state {
+                for placement_option in placement_collection {
+                    if let PlacementOption::OnSideSurface(_) = placement_option {
+                        return Some(*coordinates);
+                    }
+                }
+                None
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn placeable_on_side(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    placeable_on_wall(state_map).union(&placeable_on_side_surface(state_map)).copied().collect()
+}
+
+fn placeable_on_top_surface_backed(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
     state_map.iter()
         .filter_map(|(coordinates, state)| {
             if let InteriorPlacementState::Available(placement_collection)
@@ -467,7 +544,7 @@ fn any_on_top_surface_backed(state_map: &InteriorPlacementStateMap) -> HashSet<(
         .collect()
 }
 
-fn any_on_top_surface_freestanding(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+fn placeable_on_top_surface_freestanding(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
     state_map.iter()
         .filter_map(|(coordinates, state)| {
             if let InteriorPlacementState::Available(placement_collection)
@@ -485,8 +562,8 @@ fn any_on_top_surface_freestanding(state_map: &InteriorPlacementStateMap) -> Has
         .collect()
 }
 
-fn any_on_top_surface(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
-    any_on_top_surface_backed(state_map).union(&any_on_top_surface_freestanding(state_map)).copied().collect()
+fn placeable_on_top_surface(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usize)> {
+    placeable_on_top_surface_backed(state_map).union(&placeable_on_top_surface_freestanding(state_map)).copied().collect()
 }
 
 /// Returns set of coordinates on layers 0 and 1, where the coordinate for both layers are open.
@@ -522,9 +599,13 @@ fn walkable(state_map: &InteriorPlacementStateMap) -> HashSet<(usize, usize, usi
         .collect()
 }
 
-fn on_floor_backed_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+fn on_floor_backed_directions(
+    state_map: &InteriorPlacementStateMap,
+    coordinates: (usize, usize, usize),
+) -> Vec<Surface4> {
     if let Some(state) = state_map.get(&coordinates) {
-        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+        if let InteriorPlacementState::Available(collection)
+        | InteriorPlacementState::KeepOpen(collection) = state {
             return collection.iter()
                 .filter_map(|option| {
                     if let PlacementOption::OnFloorBacked(direction) = option {
@@ -540,9 +621,13 @@ fn on_floor_backed_directions(state_map: &InteriorPlacementStateMap, coordinates
     Vec::new()
 }
 
-fn on_wall_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+fn on_wall_directions(
+    state_map: &InteriorPlacementStateMap,
+    coordinates: (usize, usize, usize),
+) -> Vec<Surface4> {
     if let Some(state) = state_map.get(&coordinates) {
-        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+        if let InteriorPlacementState::Available(collection)
+        | InteriorPlacementState::KeepOpen(collection) = state {
             return collection.iter()
                 .filter_map(|option| {
                     if let PlacementOption::OnWall(direction) = option {
@@ -558,9 +643,13 @@ fn on_wall_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize
     Vec::new()
 }
 
-fn from_ceiling_backed_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+fn _from_ceiling_backed_directions(
+    state_map: &InteriorPlacementStateMap,
+    coordinates: (usize, usize, usize),
+) -> Vec<Surface4> {
     if let Some(state) = state_map.get(&coordinates) {
-        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+        if let InteriorPlacementState::Available(collection)
+        | InteriorPlacementState::KeepOpen(collection) = state {
             return collection.iter()
                 .filter_map(|option| {
                     if let PlacementOption::FromCeilingBacked(direction) = option {
@@ -576,9 +665,13 @@ fn from_ceiling_backed_directions(state_map: &InteriorPlacementStateMap, coordin
     Vec::new()
 }
 
-fn on_top_surface_backed_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+fn _on_top_surface_backed_directions(
+    state_map: &InteriorPlacementStateMap,
+    coordinates: (usize, usize, usize),
+) -> Vec<Surface4> {
     if let Some(state) = state_map.get(&coordinates) {
-        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+        if let InteriorPlacementState::Available(collection)
+        | InteriorPlacementState::KeepOpen(collection) = state {
             return collection.iter()
                 .filter_map(|option| {
                     if let PlacementOption::OnTopSurfaceBacked(direction) = option {
@@ -594,9 +687,13 @@ fn on_top_surface_backed_directions(state_map: &InteriorPlacementStateMap, coord
     Vec::new()
 }
 
-fn on_side_surface_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+fn _on_side_surface_directions(
+    state_map: &InteriorPlacementStateMap,
+    coordinates: (usize, usize, usize),
+) -> Vec<Surface4> {
     if let Some(state) = state_map.get(&coordinates) {
-        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+        if let InteriorPlacementState::Available(collection)
+        | InteriorPlacementState::KeepOpen(collection) = state {
             return collection.iter()
                 .filter_map(|option| {
                     if let PlacementOption::OnSideSurface(direction) = option {
@@ -612,9 +709,13 @@ fn on_side_surface_directions(state_map: &InteriorPlacementStateMap, coordinates
     Vec::new()
 }
 
-fn any_directions(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, usize)) -> Vec<Surface4> {
+fn any_directions(
+    state_map: &InteriorPlacementStateMap,
+    coordinates: (usize, usize, usize),
+) -> Vec<Surface4> {
     if let Some(state) = state_map.get(&coordinates) {
-        if let InteriorPlacementState::Available(collection) | InteriorPlacementState::KeepOpen(collection) = state {
+        if let InteriorPlacementState::Available(collection)
+        | InteriorPlacementState::KeepOpen(collection) = state {
             return collection.iter()
                 .filter_map(|option| {
                     if let PlacementOption::OnFloorBacked(direction)
@@ -798,9 +899,11 @@ fn place_cooking(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementSt
                     // Let other objects connect to the sides of the furnace
                     if let Some(neighbour) = neighbour_in_direction_3d(location, direction.rotated_90_ccw()) {
                         state_map_add_backing(state_map, neighbour, direction.rotated_90_cw());
+                        state_map_add_side_surface(state_map, neighbour, direction.rotated_90_cw());
                     }
                     if let Some(neighbour) = neighbour_in_direction_3d(location, direction.rotated_90_cw()) {
                         state_map_add_backing(state_map, neighbour, direction.rotated_90_ccw());
+                        state_map_add_side_surface(state_map, neighbour, direction.rotated_90_ccw());
                     }
 
                     // Let other objects be placed on top of the furnace
@@ -823,7 +926,7 @@ fn place_decor(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStat
     // 2) TODO On floor NB may need armour stand
 
     // 3) "normal" top surface: Flower pot, skull, sea pickle, turtle egg, etc.
-    for location in any_on_top_surface(state_map) {
+    for location in placeable_on_top_surface(state_map) {
         let block = match rng.gen_range(0..=9) {
             0 => Block::FlowerPot(mcprogedit::block::FlowerPot::new_empty()),
             1 | 2 | 3 | 4 | 5 | 6 => {
@@ -983,29 +1086,6 @@ fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementS
         .map(|((x, _, z), _)| (*x, *z))
         .collect();
 
-    // Potential lantern locations: Top surfaces.
-    let top_surface_positions: InteriorPlacementStateMap = state_map.iter()
-        .filter_map(|((x, y, z), state)| {
-            if let InteriorPlacementState::Available(collection)
-            | InteriorPlacementState::KeepOpen(collection) = state {
-                for option in collection {
-                    match option {
-                        PlacementOption::OnTopSurfaceFreestanding
-                        | PlacementOption::OnTopSurfaceBacked(_) => {
-                            if *y == 1 || *y == 2 {
-                                return Some(((*x, *y, *z), state.clone()));
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-                None
-            } else {
-                None
-            }
-        })
-        .collect();
-
     // Potential lantern locations: Hanging from ceiling.
     let ceiling_positions: InteriorPlacementStateMap = state_map.iter()
         .filter_map(|((x, y, z), state)| {
@@ -1029,94 +1109,54 @@ fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementS
         })
         .collect();
 
-    // Potential torch locations: On walls.
-    let torch_positions: InteriorPlacementStateMap = state_map.iter()
-        .filter_map(|((x, y, z), state)| {
-            if let InteriorPlacementState::Available(collection)
-            | InteriorPlacementState::KeepOpen(collection) = state {
-                for option in collection {
-                    match option {
-                        PlacementOption::OnWall(_)
-                        | PlacementOption::OnSideSurface(_) => {
-                            if *y == 1 || *y == 2 {
-                                return Some(((*x, *y, *z), state.clone()));
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-                None
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Potential torch positions: On floor.
-    let floor_positions: InteriorPlacementStateMap = state_map.iter()
-        .filter_map(|((x, y, z), state)| {
-            if let InteriorPlacementState::Available(collection)
-            | InteriorPlacementState::KeepOpen(collection) = state {
-                for option in collection {
-                    match option {
-                        PlacementOption::OnFloorFreestanding
-                        | PlacementOption::OnFloorBacked(_) => {
-                            return Some(((*x, *y, *z), state.clone()));
-                        }
-                        _ => (),
-                    }
-                }
-                None
-            } else {
-                None
-            }
-        })
-        .collect();
-
     // Put lanterns on surfaces
-    for ((x, y, z), _) in top_surface_positions {
-        if darkness_map.contains(&(x, z))
-        && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
-            // Place lantern
-            excerpt.set_block_at(
-                BlockCoord(x as i64, y as i64, z as i64),
-                Block::Lantern { mounted_at: Surface2::Down, waterlogged: false },
-            );
-            // Bookkeeping
-            state_map_mark_occupied_open(state_map, (x, y, z));
-            // Remove surroundings from darkness map
-            for surroundings in illuminated_coordinates((x, y, z), LANTERN_BRIGHTNESS) {
-                darkness_map.remove(&surroundings);
+    placeable_on_top_surface(state_map).into_iter()
+        .filter(|&(_x, y, _z)| y == 1 || y == 2)
+        .for_each(|(x, y, z)| {
+            if darkness_map.contains(&(x, z))
+            && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
+                // Place lantern
+                excerpt.set_block_at(
+                    BlockCoord(x as i64, y as i64, z as i64),
+                    Block::Lantern { mounted_at: Surface2::Down, waterlogged: false },
+                );
+                // Bookkeeping
+                state_map_mark_occupied_open(state_map, (x, y, z));
+                // Remove surroundings from darkness map
+                for surroundings in illuminated_coordinates((x, y, z), LANTERN_BRIGHTNESS) {
+                    darkness_map.remove(&surroundings);
+                }
             }
-        }
-    }
+        });
 
     // Put torches on walls
-    for ((x, y, z), state) in torch_positions {
-        if darkness_map.contains(&(x, z))
-        && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
-            // Get torch attachment surface
-            let direction: Direction = on_wall_directions(state_map, (x, y, z))
-                .pop()
-                .expect("Torch positions are on wall, so we should get at least one direction match.")
-                .into();
-            let direction: Surface5 = direction
-                .try_into()
-                .expect("Converting from Surface4 to Surface5 should be safe.");
+    placeable_on_side(state_map).into_iter()
+        .filter(|&(_x, y, _z)| y == 1 || y == 2)
+        .for_each(|(x, y, z)| {
+            if darkness_map.contains(&(x, z))
+            && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
+                // Get torch attachment surface
+                let direction: Direction = on_wall_directions(state_map, (x, y, z))
+                    .pop()
+                    .expect("Torch positions are on wall, so we should get at least one direction match.")
+                    .into();
+                let direction: Surface5 = direction
+                    .try_into()
+                    .expect("Converting from Surface4 to Surface5 should be safe.");
 
-            // Place torch
-            excerpt.set_block_at(
-                BlockCoord(x as i64, y as i64, z as i64),
-                Block::Torch { attached: direction },
-            );
-            // Bookkeeping
-            state_map_mark_occupied_open(state_map, (x, y, z));
-            // Remove surroundings from darkness map
-            for surroundings in illuminated_coordinates((x, y, z), TORCH_BRIGHTNESS) {
-                darkness_map.remove(&surroundings);
+                // Place torch
+                excerpt.set_block_at(
+                    BlockCoord(x as i64, y as i64, z as i64),
+                    Block::Torch { attached: direction },
+                );
+                // Bookkeeping
+                state_map_mark_occupied_open(state_map, (x, y, z));
+                // Remove surroundings from darkness map
+                for surroundings in illuminated_coordinates((x, y, z), TORCH_BRIGHTNESS) {
+                    darkness_map.remove(&surroundings);
+                }
             }
-        }
-    }
+        });
 
     // Put lantern in chain from ceiling
     const LANTERN_HEIGHT: usize = 3;
@@ -1154,22 +1194,23 @@ fn place_lighting(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementS
     }
 
     // Last fallback: Put torch on floor
-    for ((x, y, z), state) in floor_positions {
-        if darkness_map.contains(&(x, z))
-        && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
-            // Place torch
-            excerpt.set_block_at(
-                BlockCoord(x as i64, y as i64, z as i64),
-                Block::Torch { attached: Surface5::Down },
-            );
-            // Bookkeeping
-            state_map_mark_occupied_open(state_map, (x, y, z));
-            // Remove surroundings from darkness map
-            for surroundings in illuminated_coordinates((x, y, z), TORCH_BRIGHTNESS) {
-                darkness_map.remove(&surroundings);
+    placeable_on_floor(state_map).into_iter()
+        .for_each(|(x, y, z)| {
+            if darkness_map.contains(&(x, z))
+            && is_nonblocking_safe(&state_map, &[(x, y, z)]) {
+                // Place torch
+                excerpt.set_block_at(
+                    BlockCoord(x as i64, y as i64, z as i64),
+                    Block::Torch { attached: Surface5::Down },
+                );
+                // Bookkeeping
+                state_map_mark_occupied_open(state_map, (x, y, z));
+                // Remove surroundings from darkness map
+                for surroundings in illuminated_coordinates((x, y, z), TORCH_BRIGHTNESS) {
+                    darkness_map.remove(&surroundings);
+                }
             }
-        }
-    }
+        });
 
     // TODO What to do if not completely lighted???
     // Probably one should operate with two maps: One "no go zone" around where a light source was
@@ -1345,12 +1386,12 @@ fn place_top_surface(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlaceme
 // rationale is that given certain properties, the code for placing the object can be shared
 // between multiple placement functions.
 /// Place a blocking object resting against a surface behind it, with a reachable walkable area in front.
-fn place_blocking_helper(
-    excerpt: &mut WorldExcerpt,
-    state_map: &mut InteriorPlacementStateMap,
-    object: Block, // Block, facing North. NB Depends on getting a rotate() function for Block.
-    open_areas: DirectionFlags6, // Which block boundaries of 'object' must be kept open.
-    surfaces: DirectionFlags6, // Which block boundaries of 'object' act as surfaces.
+fn _place_blocking_helper(
+    _excerpt: &mut WorldExcerpt,
+    _state_map: &mut InteriorPlacementStateMap,
+    _object: Block, // Block, facing North. NB Depends on getting a rotate() function for Block.
+    _open_areas: DirectionFlags6, // Which block boundaries of 'object' must be kept open.
+    _surfaces: DirectionFlags6, // Which block boundaries of 'object' act as surfaces.
 ) -> bool {
     unimplemented!();
 }
@@ -1360,7 +1401,6 @@ fn place_blocking_helper(
 
 fn state_map_mark_occupied_open(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
     state_map.insert(coordinates, InteriorPlacementState::OccupiedOpen);
-    // TODO Check first if already an Occupied state, and if so return an error.
 }
 
 fn state_map_mark_open(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
@@ -1368,13 +1408,10 @@ fn state_map_mark_open(state_map: &mut InteriorPlacementStateMap, coordinates: (
     if let InteriorPlacementState::Available(collection) = current {
         *current = InteriorPlacementState::KeepOpen(collection.clone());
     }
-    // TODO Return an error if *current == OccupiedBlocking, as then it is already blocking and
-    // cannot be kept open.
 }
 
 fn state_map_mark_blocking(state_map: &mut InteriorPlacementStateMap, coordinates: (usize, usize, usize)) {
     state_map.insert(coordinates, InteriorPlacementState::OccupiedBlocking);
-    // TODO Check first if already an Occupied state, and if so return an error.
 }
 
 fn state_map_add_backing(
@@ -1382,10 +1419,41 @@ fn state_map_add_backing(
     coordinates: (usize, usize, usize),
     direction: Surface4,
 ) {
-    // TODO Look up the collection
-    // TODO Figure out what kind of placement (floor vs wall vs ceiling vs surface)
-    // TODO Add backing
-    // TODO Remove any "freestanding"
+    match state_map.get_mut(&coordinates) {
+        Some(InteriorPlacementState::Available(collection))
+        | Some (InteriorPlacementState::KeepOpen(collection)) => {
+            // Generate list of additions
+            let inserts: Vec<PlacementOption> = collection.iter()
+                .filter_map(|option| {
+                    match option {
+                        PlacementOption::OnWall(_) => None,
+                        PlacementOption::OnFloorFreestanding => Some(PlacementOption::OnFloorBacked(direction)),
+                        PlacementOption::OnFloorBacked(_) => Some(PlacementOption::OnFloorBacked(direction)),
+                        PlacementOption::FromCeilingFreestanding => Some(PlacementOption::FromCeilingBacked(direction)),
+                        PlacementOption::FromCeilingBacked(_) => Some(PlacementOption::FromCeilingBacked(direction)),
+                        PlacementOption::OnTopSurfaceFreestanding => Some(PlacementOption::OnTopSurfaceBacked(direction)),
+                        PlacementOption::OnTopSurfaceBacked(_) => Some(PlacementOption::OnTopSurfaceBacked(direction)),
+                        PlacementOption::OnSideSurface(_) => None,
+                    }
+                })
+                .collect();
+
+            // Apply changes
+            for insert in inserts {
+                collection.insert(insert);
+            }
+
+            // Remove any freestanding
+            for option in &[
+                PlacementOption::OnFloorFreestanding,
+                PlacementOption::FromCeilingFreestanding,
+                PlacementOption::OnTopSurfaceFreestanding,
+            ] {
+                collection.remove(&option);
+            }
+        }
+        _ => (),
+    }
 }
 
 fn state_map_add_top_surface(
@@ -1469,8 +1537,8 @@ enum PlacementOption {
 // Functions for furnishing various rooms
 //////////////////////////////////////////
 
-pub fn furnish_debug(room_shape: &RoomShape) -> Option<WorldExcerpt> {
-    let mut placement_state_map = interior_placement_state_map_from_room_shape(&room_shape);
+pub fn _furnish_debug(room_shape: &RoomShape) -> Option<WorldExcerpt> {
+    let placement_state_map = interior_placement_state_map_from_room_shape(&room_shape);
 
     // Create a world excerpt, for placing objects into
     let (x, z) = room_shape.dimensions();
@@ -1480,13 +1548,13 @@ pub fn furnish_debug(room_shape: &RoomShape) -> Option<WorldExcerpt> {
     // TODO put buttons or something on wall positions, some transparent floating block in mid-air
     for ((x, y, z), placement_state) in placement_state_map.iter() {
         match placement_state {
-            InteriorPlacementState::Available(state_collection) => {
+            InteriorPlacementState::Available(_state_collection) => {
                 output.set_block_at(
                     BlockCoord(*x as i64, *y as i64, *z as i64),
                     Block::carpet_with_colour(Colour::Yellow),
                 );
             }
-            InteriorPlacementState::KeepOpen(state_collection) => {
+            InteriorPlacementState::KeepOpen(_state_collection) => {
                 output.set_block_at(
                     BlockCoord(*x as i64, *y as i64, *z as i64),
                     Block::carpet_with_colour(Colour::Red),
