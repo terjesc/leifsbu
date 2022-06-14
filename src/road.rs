@@ -9,6 +9,7 @@ use mcprogedit::block::Block;
 use mcprogedit::material::Material;
 use mcprogedit::positioning::Axis3;
 use mcprogedit::world_excerpt::WorldExcerpt;
+use rand::{Rng, thread_rng};
 
 /*
 // TODO implement a concept of "road", that contains both the path, the width,
@@ -100,7 +101,13 @@ pub fn build_road(
     path: &RoadPath,
     height_map: &GrayImage,
     road_width: i64,
+    road_covers: &[Block],
 ) {
+    // Initialize randomizer
+    let mut rng = thread_rng();
+    let cover_count = road_covers.len();
+    let mut random_road_cover = || { road_covers[rng.gen_range(0..cover_count)].clone() };
+
     // Build the path segments
     for segment in path.windows(2) {
         let line = line::line(
@@ -148,7 +155,7 @@ pub fn build_road(
             _ => {
                 for position in &line {
                     excerpt.set_block_at(*position - (0, 2, 0).into(), Block::Cobblestone);
-                    excerpt.set_block_at(*position - (0, 1, 0).into(), Block::Gravel);
+                    excerpt.set_block_at(*position - (0, 1, 0).into(), random_road_cover());
                     excerpt.set_block_at(*position, Block::Air);
                     excerpt.set_block_at(*position + (0, 1, 0).into(), Block::Air);
                     excerpt.set_block_at(*position + (0, 2, 0).into(), Block::Air);
@@ -166,6 +173,7 @@ pub fn build_road(
 
         // Path and support at node
         match kind {
+            /*
             RoadNodeKind::Ground => {
                 tree::chop(excerpt, (x, y - 1, z).into());
                 excerpt.set_block_at(
@@ -174,7 +182,7 @@ pub fn build_road(
                     Block::Andesite,
                     //Block::BlockOfGold,
                 );
-            }
+            }*/
             RoadNodeKind::WoodenSupport => {
                 let image::Luma([ground]) = height_map[(x as u32, z as u32)];
                 for y in ground as i64..y {

@@ -29,7 +29,7 @@ use simple_logger::SimpleLogger;
 use imageproc::stats::histogram;
 use mcprogedit::block::{Block, Log};
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
-use mcprogedit::material::WoodMaterial;
+use mcprogedit::material::{CoralMaterial, WoodMaterial};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
 use crate::areas::*;
@@ -356,16 +356,69 @@ fn main() {
 
     // Build the various roads and streets...
     // TODO Change road width depending on total town area?
+    let city_streets_cover = vec![
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Horn, dead: true },
+    ];
     for street in streets {
-        road::build_road(&mut excerpt, &street, &features.terrain, 2);
+        road::build_road(&mut excerpt, &street, &features.terrain, 2, &city_streets_cover);
     }
 
+    let country_roads_cover = vec![
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Bubble, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Horn, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Tube, dead: true },
+        Block::CoarseDirt,
+        Block::CoarseDirt,
+        Block::CoarseDirt,
+    ];
     for road in country_roads {
-        road::build_road(&mut excerpt, &road, &features.terrain, 3);
+        road::build_road(&mut excerpt, &road, &features.terrain, 3, &country_roads_cover);
     }
 
+    let city_roads_cover = vec![
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::Gravel,
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Fire, dead: true },
+        Block::Andesite,
+        Block::Andesite,
+        Block::CoralBlock { material: CoralMaterial::Bubble, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Horn, dead: true },
+        Block::CoralBlock { material: CoralMaterial::Tube, dead: true },
+        Block::CrackedStoneBricks,
+        Block::CrackedStoneBricks,
+        Block::StoneBricks,
+        Block::Cobblestone,
+        Block::Cobblestone,
+    ];
     for road in city_roads {
-        road::build_road(&mut excerpt, &road, &features.terrain, 4);
+        road::build_road(&mut excerpt, &road, &features.terrain, 4, &city_roads_cover);
     }
 
     // Build some structures (houses?) on the plots.
