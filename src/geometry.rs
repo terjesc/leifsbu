@@ -7,7 +7,7 @@ use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::f32::consts::PI;
 
-use log::{warn, info};
+use log::{warn, info, trace};
 
 pub type RawEdge2d = (BlockColumnCoord, BlockColumnCoord);
 pub type RawEdge3d = (BlockCoord, BlockCoord);
@@ -28,6 +28,10 @@ pub enum InOutSide {
 
 /// For a line through `line.0` and `line.1`, in that direction,
 /// which side is `point` on relative to the line?
+// FIXME Double check this function. Since Minecraft's (x, z) coordinates are the "main" 2D
+//       coordinates, Left and Right might actually be reversed.
+//       This function is currently used in geometry.rs, plot.rs and structure_builder.rs,
+//       and inverting sides here might lead to regression bugs there.
 pub fn point_position_relative_to_line(point: BlockColumnCoord, line: RawEdge2d) -> LeftRightSide {
     let double_area = (line.1 .0 - line.0 .0) * (point.1 - line.0 .1)
         - (point.0 - line.0 .0) * (line.1 .1 - line.0 .1);
@@ -325,7 +329,7 @@ pub fn extract_blocks(graph: &LandUsageGraph) -> Vec<Vec<BlockColumnCoord>> {
             current_edge = next_edge;
         }
     }
-    println!("Found {} areas.", areas.len());
+    trace!("Found {} areas.", areas.len());
     areas
 }
 

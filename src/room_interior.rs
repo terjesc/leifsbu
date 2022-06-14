@@ -7,7 +7,7 @@ use mcprogedit::bounded_ints::*;
 use mcprogedit::colour::Colour;
 use mcprogedit::coordinates::BlockCoord;
 use mcprogedit::material::Material;
-use mcprogedit::positioning::{Axis3, Direction, DirectionFlags6, Surface2, Surface4, Surface5};
+use mcprogedit::positioning::{Axis3, Direction, DirectionFlags6, Surface2, Surface4, Surface5, Surface6};
 use mcprogedit::world_excerpt::WorldExcerpt;
 
 use log::{trace, warn};
@@ -322,7 +322,7 @@ fn is_open(state_map: &InteriorPlacementStateMap, coordinates: (usize, usize, us
     }
 }
 
-fn neighbourhood_4((x, z): (usize, usize)) -> Vec<(usize, usize)> {
+pub(crate) fn neighbourhood_4((x, z): (usize, usize)) -> Vec<(usize, usize)> {
     let mut neighbourhood_coordinates = vec![(x + 1, z), (x, z + 1)];
     if x > 0 { neighbourhood_coordinates.push((x - 1, z)) }
     if z > 0 { neighbourhood_coordinates.push((x, z - 1)) }
@@ -1454,6 +1454,7 @@ fn place_single_sleep(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacem
 
 /// Place objects fulfilling the "store" requirement, e.g. a chest, or barrel.
 fn place_store(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStateMap) -> bool {
+    let mut rng = thread_rng();
     let walkable_tiles = walkable(&state_map);
 
     for location in available_on_floor_backed(&state_map) {
@@ -1468,13 +1469,33 @@ fn place_store(excerpt: &mut WorldExcerpt, state_map: &mut InteriorPlacementStat
             if let Some(neighbour) = neighbour_in_direction_3d(location, direction) {
                 if walkable_tiles.contains(&neighbour)
                 && is_blocking_safe(&state_map, &[location]) {
-                    excerpt.set_block_at(
-                        BlockCoord(location.0 as i64, location.1 as i64, location.2 as i64),
-                        Block::chest(direction),
-                    );
+
+                    match rng.gen_range(0..=4) {
+                        0 | 1 | 2 => {
+                            excerpt.set_block_at(
+                                BlockCoord(location.0 as i64, location.1 as i64, location.2 as i64),
+                                Block::chest(direction),
+                            );
+                            state_map_mark_open(state_map, above);
+                        }
+                        3 => {
+                            excerpt.set_block_at(
+                                BlockCoord(location.0 as i64, location.1 as i64, location.2 as i64),
+                                Block::barrel(Surface6::Up),
+                            );
+                            state_map_mark_open(state_map, above);
+                        }
+                        4 => {
+                            excerpt.set_block_at(
+                                BlockCoord(location.0 as i64, location.1 as i64, location.2 as i64),
+                                Block::barrel(Direction::from(direction).try_into().unwrap()),
+                            );
+                            state_map_add_top_surface(state_map, above);
+                        }
+                        _ => unreachable!(),
+                    }
                     state_map_mark_blocking(state_map, location);
                     state_map_mark_open(state_map, neighbour);
-                    state_map_mark_open(state_map, above);
                     return true;
                 }
             }

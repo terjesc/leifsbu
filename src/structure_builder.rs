@@ -1,9 +1,10 @@
 use crate::block_palette::BlockPalette;
 use crate::build_area::BuildArea;
 use crate::geometry;
-use crate::geometry::{RawEdge2d};
-use crate::line::line;
-use crate::room_interior::{ColumnKind, furnish_cottage, RoomShape};
+use crate::geometry::{LeftRightSide, point_position_relative_to_line, RawEdge2d};
+use crate::line::{line, narrow_line};
+use crate::room_interior::{ColumnKind, neighbourhood_4, RoomShape};
+use crate::room_interior;
 
 use log::{trace, warn};
 use mcprogedit::block::{Block, Flower};
@@ -348,6 +349,7 @@ pub fn build_house(
     // Calculate and place roof
     let roof_coordinates = calculate_roof_coordinates(&interior_neighbours, &buildable_interior, cornice_height);
     for coordinates in &roof_coordinates {
+        // NB TODO FIXME uncomment to put roof back in!
         output.set_block_at(*coordinates, palette.roof.clone());
 
         // If over internal parts: Clear down to cornice_height
@@ -377,42 +379,542 @@ pub fn build_house(
     // Place interior
     // For each floor
     for (index, y) in floor_levels.iter().enumerate() {
-        // TODO Split into rooms if area is large.
+        enum RoomKind {
+            Cooking,
+            Cottage,
+            Living,
+            Sleeping,
+            Working,
+        }
 
-        // Prepare room shape structure
-        let mut room_shape = RoomShape::new((x_len, z_len));
-        for coordinates in &buildable_interior {
+        let mut rooms: Vec<(RoomKind, HashSet<(usize, usize)>)> = Vec::new();
+        let mut interior_walls: HashSet<(usize, usize)> = HashSet::new();
+        let mut interior_doors: HashSet<DoorPlacement> = HashSet::new();
+        let mut interior_wall_openings: HashSet<(usize, usize)> = HashSet::new();
+
+        // For small houses, have a single room with everything in it.
+        if buildable_interior.len() <= 30 {
+            rooms.push((RoomKind::Cottage, buildable_interior.clone()));
+
+        } else { // For large houses, split into several rooms.
+            // Get bounding box
+            let point_vec: Vec<imageproc::point::Point<i64>> = buildable_interior
+                .iter()
+                .map(|point| imageproc::point::Point::<i64>::new(point.0 as i64, point.1 as i64))
+                .collect();
+            let obb = imageproc::geometry::min_area_rect(&point_vec);
+            let (point_a, point_b, point_c, point_d) = (obb[0], obb[1], obb[2], obb[3]);
+
+            // Get bounding box side lengths
+            let len_a_b = geometry::euclidean_distance(
+                BlockColumnCoord(point_a.x, point_a.y),
+                BlockColumnCoord(point_b.x, point_b.y),
+            );
+            let len_b_c = geometry::euclidean_distance(
+                BlockColumnCoord(point_b.x, point_b.y),
+                BlockColumnCoord(point_c.x, point_c.y),
+            );
+
+            // Rearrange so the shape is such:
+            //
+            // A --------------- B
+            // |                 |
+            // D --------------- C
+            //
+            // I.e. A-B and C-D are the long sides, and A-D and B-C are the short sides.
+            let (point_a, point_b, point_c, point_d, len_a_b, len_b_c) = if len_a_b < len_b_c {
+                (point_b, point_c, point_d, point_a, len_b_c, len_a_b)
+            } else {
+                (point_a, point_b, point_c, point_d, len_a_b, len_b_c)
+            };
+            trace!("Floor dimensions: {:?} x {:?}", len_a_b, len_b_c);
+
+            if len_a_b >= 10.0 && len_a_b >= 2.0 * len_b_c {
+                // Scenario I: Quite oblong houses
+                //
+                // A-B is 10 or more, and A-B is more than 2 x B-C.
+                // We have an oblong shape.
+                //
+                // Split the shape such:
+                // A --- 1 --- 2 --- B
+                // |  a  1  b  2  c  |
+                // D --- 1 --- 2 ----C
+
+                // Find split points on A-B and D-C, for the lines 1 and 2.
+                let split_point_a_b_1 = (
+                    point_a.x + ((point_b.x - point_a.x) * 3 / 10),
+                    point_a.y + ((point_b.y - point_a.y) * 3 / 10),
+                );
+                let split_point_a_b_2 = (
+                    point_a.x + ((point_b.x - point_a.x) * 7 / 10),
+                    point_a.y + ((point_b.y - point_a.y) * 7 / 10),
+                );
+                let split_point_d_c_1 = (
+                    point_d.x + ((point_c.x - point_d.x) * 3 / 10),
+                    point_d.y + ((point_c.y - point_d.y) * 3 / 10),
+                );
+                let split_point_d_c_2 = (
+                    point_d.x + ((point_c.x - point_d.x) * 7 / 10),
+                    point_d.y + ((point_c.y - point_d.y) * 7 / 10),
+                );
+
+                // Construct split lines
+                let line_1 = (split_point_a_b_1, split_point_d_c_1);
+                let line_2 = (split_point_a_b_2, split_point_d_c_2);
+
+                // Calculate what constitutes the internal walls
+                let wall_1: HashSet<(usize, usize)> = narrow_line(
+                        &BlockCoord(line_1.0.0, 0, line_1.0.1),
+                        &BlockCoord(line_1.1.0, 0, line_1.1.1),
+                    )
+                    .iter()
+                    .filter_map(|c| {
+                        let coord = (c.0 as usize, c.2 as usize);
+                        if buildable_interior.contains(&coord) {
+                            Some(coord)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                let wall_2: HashSet<(usize, usize)> = narrow_line(
+                        &BlockCoord(line_2.0.0, 0, line_2.0.1),
+                        &BlockCoord(line_2.1.0, 0, line_2.1.1),
+                    )
+                    .iter()
+                    .filter_map(|c| {
+                        let coord = (c.0 as usize, c.2 as usize);
+                        if buildable_interior.contains(&coord) {
+                            Some(coord)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                // Calculate interior areas a, b and c
+                let mut area_a: HashSet<(usize, usize)> = HashSet::new();
+                let mut area_b: HashSet<(usize, usize)> = HashSet::new();
+                let mut area_c: HashSet<(usize, usize)> = HashSet::new();
+
+                buildable_interior.iter()
+                    // The internal walls are not part of any of the interior areas.
+                    .filter_map(|(x, z)| {
+                        if wall_1.contains(&(*x, *z)) || wall_2.contains(&(*x, *z)) {
+                            None
+                        } else {
+                            Some(BlockColumnCoord(*x as i64, *z as i64))
+                        }
+                    })
+                    .for_each(|point| {
+                        // Area a is to the right of line 1.
+                        // NB Left and Right flipped, due to axis orientation
+                        if LeftRightSide::Left == point_position_relative_to_line(
+                            point,
+                            (
+                                BlockColumnCoord(line_1.0.0, line_1.0.1),
+                                BlockColumnCoord(line_1.1.0, line_1.1.1),
+                            ),
+                        ) {
+                            area_a.insert((point.0 as usize, point.1 as usize));
+                        // Area c is to the left of line 2.
+                        // NB Left and Right flipped, due to axis orientation
+                        } else if LeftRightSide::Right == point_position_relative_to_line(
+                            point,
+                            (
+                                BlockColumnCoord(line_2.0.0, line_2.0.1),
+                                BlockColumnCoord(line_2.1.0, line_2.1.1),
+                            ),
+                        ) {
+                            area_c.insert((point.0 as usize, point.1 as usize));
+                        // Area b is to the left of line 1 and to the right of line 2.
+                        } else {
+                            area_b.insert((point.0 as usize, point.1 as usize));
+                        }
+                    });
+
+                trace!(
+                    "Areas: total: {} a: {}, b: {}, c: {}, a + b + c: {}",
+                    buildable_interior.len(),
+                    area_a.len(),
+                    area_b.len(),
+                    area_c.len(),
+                    area_a.len() + area_b.len() + area_c.len(),
+                );
+
+                // Figure out where the doors are
+                // NB TODO move this further up / out, it is needed for all scenarios and beyond!
+                let doors_on_this_floor: HashSet<(usize, usize)> = door_positions.iter()
+                    .filter_map(|placement| {
+                        if placement.height as i64 == y + 1 {
+                            Some(placement.coordinates)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                trace!("Found {:?} doors on this floor: {:?}", doors_on_this_floor.len(), doors_on_this_floor);
+
+                // Single out one main door.
+                // NB Assuming the building at this point has one and only one door!
+                let main_door: (usize, usize) = doors_on_this_floor.into_iter().next()
+                    .expect("There should be at least one door on this floor.");
+                let main_door_neighbours = neighbourhood_4(main_door);
+
+                // Figure out if the main door opening collides with any of the interior walls.
+                // If it does, mark that wall not to be built, and register its ara into area b.
+                let mut build_wall_1 = true;
+                for neighbour in &main_door_neighbours {
+                    if wall_1.contains(neighbour) {
+                        for position in &wall_1 {
+                            area_b.insert(*position);
+                        }
+                        build_wall_1 = false;
+                    }
+                }
+                let mut build_wall_2 = true;
+                for neighbour in &main_door_neighbours {
+                    if wall_2.contains(neighbour) {
+                        for position in &wall_2 {
+                            area_b.insert(*position);
+                        }
+                        build_wall_2 = false;
+                    }
+                }
+
+                // Check what area the main door hits.
+                //      * If a: a is "kitchen", b is "living" and c is "sleeping"
+                //      * If c: a is "sleeping", b is "living" and c is "kitchen"
+                //      * If b: as for a or c, but make sure "sleeping" is walled off
+                for neighbour in &main_door_neighbours {
+                    if area_a.contains(neighbour) {
+                        trace!("FOUND DOOR TO AREA A");
+                        rooms.push((RoomKind::Cooking, area_a.clone()));
+                        rooms.push((RoomKind::Living, area_b.clone()));
+                        rooms.push((RoomKind::Sleeping, area_c.clone()));
+                        break;
+                    } else if area_b.contains(neighbour) {
+                        trace!("FOUND DOOR TO AREA B");
+                        if build_wall_1 {
+                            rooms.push((RoomKind::Cooking, area_c.clone()));
+                            rooms.push((RoomKind::Living, area_b.clone()));
+                            rooms.push((RoomKind::Sleeping, area_a.clone()));
+                        } else {
+                            rooms.push((RoomKind::Cooking, area_a.clone()));
+                            rooms.push((RoomKind::Living, area_b.clone()));
+                            rooms.push((RoomKind::Sleeping, area_c.clone()));
+                        }
+                        break;
+                    } else if area_c.contains(neighbour) {
+                        trace!("FOUND DOOR TO AREA C");
+                        rooms.push((RoomKind::Cooking, area_c.clone()));
+                        rooms.push((RoomKind::Living, area_b.clone()));
+                        rooms.push((RoomKind::Sleeping, area_a.clone()));
+                        break;
+                    }
+                }
+                if rooms.is_empty() {
+                    warn!("Did not figure out which area the main door leads to!");
+                }
+
+                if build_wall_1 {
+                    match connect_areas(&area_a, &wall_1, &area_b, *y as usize + 1) {
+                        AreaConnection::Door(door_placement) => {
+                            interior_doors.insert(door_placement);
+                        }
+                        AreaConnection::Opening(coordinates) => {
+                            interior_wall_openings.insert(coordinates);
+                        }
+                        AreaConnection::OpeningNotFound => {
+                            warn!("Could not find suitable opening through internal wall 1.");
+                            build_wall_1 = false;
+                        }
+                    }
+                }
+
+                if build_wall_2 {
+                    match connect_areas(&area_b, &wall_2, &area_c, *y as usize + 1) {
+                        AreaConnection::Door(door_placement) => {
+                            interior_doors.insert(door_placement);
+                        }
+                        AreaConnection::Opening(coordinates) => {
+                            interior_wall_openings.insert(coordinates);
+                        }
+                        AreaConnection::OpeningNotFound => {
+                            warn!("Could not find suitable opening through internal wall 2.");
+                            build_wall_2 = false;
+                        }
+                    }
+                }
+
+                // TODO Add passages between non-walled-off areas.
+
+                /// Helper enum for describing how interior areas can be connected
+                enum AreaConnection {
+                    Door(DoorPlacement),
+                    Opening((usize, usize)),
+                    OpeningNotFound,
+                }
+
+                /// Helper function for finding door or opening in interior wall
+                fn connect_areas(
+                    area_alpha: &HashSet<(usize, usize)>,
+                    wall: &HashSet<(usize, usize)>,
+                    area_beta: &HashSet<(usize, usize)>,
+                    y: usize,
+                ) -> AreaConnection{
+                    // Try to find suitable location for door.
+                    // (Must have wall to either side, and different areas front and back.)
+                    for (x, z) in wall {
+                        for direction in [Surface4::North, Surface4::South, Surface4::East, Surface4::West] {
+                            if area_alpha.contains(&coordinates_in_direction(&(*x, *z), &direction, 1))
+                            && wall.contains(&coordinates_in_direction(&(*x, *z), &direction.rotated_90_cw(), 1))
+                            && wall.contains(&coordinates_in_direction(&(*x, *z), &direction.rotated_90_ccw(), 1))
+                            && area_beta.contains(&coordinates_in_direction(&(*x, *z), &direction.opposite(), 1)) {
+                                // Found a door location
+                                return AreaConnection::Door(
+                                    DoorPlacement {
+                                        coordinates: (*x, *z),
+                                        height: y,
+                                        facing: direction,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    // Try to find suitable location for a doorless opening.
+                    // (Must have different areas in two different directions.)
+                    for (x, z) in wall {
+                        for direction in [Surface4::North, Surface4::South, Surface4::East, Surface4::West] {
+                            if area_alpha.contains(&coordinates_in_direction(&(*x, *z), &direction, 1))
+                            && (
+                                area_beta.contains(&coordinates_in_direction(&(*x, *z), &direction.rotated_90_cw(), 1))
+                                || area_beta.contains(&coordinates_in_direction(&(*x, *z), &direction.rotated_90_ccw(), 1))
+                                || area_beta.contains(&coordinates_in_direction(&(*x, *z), &direction.opposite(), 1))
+                            ) {
+                                // Found opening location
+                                return AreaConnection::Opening((*x, *z));
+                            }
+                        }
+                    }
+                    // None of the strategies found a way to connect the areas through the wall.
+                    AreaConnection::OpeningNotFound
+                }
+
+                // Add interior walls.
+                if build_wall_1 {
+                    for wall in wall_1 {
+                        interior_walls.insert(wall);
+                    }
+                }
+                if build_wall_2 {
+                    for wall in wall_2 {
+                        interior_walls.insert(wall);
+                    }
+                }
+
+            } else { // Fallback: One single room.
+                rooms.push((RoomKind::Cottage, buildable_interior.clone()));
+            }
+
+            // Scenario I
+            //
+            //
+            // We now have new (internal) walls 1 and 2, and rooms a, b and c.
+            //
+            // If the main entrance is leading to wall 1: merge 1 with area b.
+            // If the main entrance is leading to wall 2: merge 2 with area b.
+            //
+            // If wall 1 remains, insert door along it. Otherwise register open passage.
+            // If wall 2 remains, insert door along it. Otherwise register open passage.
+            //
+            // Assign rooms/areas according to which area is next to the main door:
+            //      a: a is "kitchen", b is "living", c is "sleeping"
+            //      b: pick same as either a or c
+            //      c: a is "sleeping", b is "living", a is "kitchen"
+            //
+            //
+            // Scenario II
+            //
+            // A-B and B-C are similar in length, and area is not that big.
+            //
+            // Split the shape such:
+            // A ---- 1 -- B
+            // |  a   1  b |
+            // |      1    |
+            // D ---- 1 -- C
+            //
+            // With the main door leading to area a. Flip if necessary.
+            // Then assign a soft split (no wall) mid A-D to mid 1.
+            // Assign "kitchen" and "living" to the parts of a, and "sleeping" to b.
+            //
+            //
+            // Scenario III
+            //
+            // A-B and B-C are similar in length.
+            // We have a shape closer to a square.
+            //
+            // Split the shape such:
+            // A --- 1 --- B
+            // |  a  1  b  |
+            // 444444 222222
+            // |  d  3  c  |
+            // D --- 3 --- C
+            //
+            // One of the interior walls (1, 2, 3, 4) are closer to the main entrance than the
+            // others, and is potentially merged to the closest-to-door of the areas it divides.
+            //
+            // There are several options (depending on total area and type of work):
+            //
+            // 1) The mergable are is "living" (largest) and "kitchen" (smallest), with the remaining
+            //    two rooms "sleeping".
+            //
+            //    TODO (long term, when various "working" has been added)
+            // 2) The mergable area is "living" (largest) and "working" (smallest), the neighbour room
+            //    of "living" is "kitchen" and the neighbour room of "kitchen" is "sleeping"
+            //    TODO (long term, when various "working" has been added)
+            // 3) The mergable area is "working" (largest) and "living" (smallest), the neighbour
+            //    room of "living" is "kitchen" and the neighbour room of "kitchen" is "sleeping"
+            //
+            //
+            // TODO (long term, fancy splits that will most likely not make it for the 2022 deadline)
+            // Scenario IV
+            // There is a certain oblongity to the building, but it's still 7 or more units wide.
+            //
+            // Split the shape such, provided that the main entrance reaches a:
+            // A --- 1 ----- B
+            // |     1   b   |
+            // |  a  122222222
+            // |     1   c   |
+            // D --- 1 ----- C
+            //
+            // Or such, provided that the main entrance reaches c (may need flipping):
+            // A ---- 1 ---- B
+            // |  a   1  b   |
+            // 4444444 2222222
+            // | d 3    c    |
+            // D - 3 ------- C
+            //
+            // For the former (3 room configuration) choose one of:
+            //      * a is "living" + "kitchen", b and c are "sleeping"
+            //      * a is "living", b or c is "kitchen", remaining is "sleeping"
+            //
+            // For the latter (4 room configuration) choose one of:
+            //      * c is "living", d is "kitchen", a and b are "sleeping"
+            //      * c is "working", d is "kitchen", a is "living", b is "sleeping"
+            //      * or find better suited assignations
+        }
+
+        // Place interior walls
+        for (x, z) in &interior_walls {
             let ceiling_height = if index < floor_levels.len() - 1 {
                 floor_levels[index + 1] as i64 - *y - 1
             } else {
-                *roof_height_lookup.get(coordinates)
+                *roof_height_lookup.get(&(*x, *z))
                     .expect("If it's in buildable interior it should have a roof above.")
                     as i64
                     - *y
                     - 1
             };
-            room_shape.set_column_kind_at(*coordinates, ColumnKind::Floor(ceiling_height as usize));
-        }
-        for coordinates in &interior_neighbours {
-            room_shape.set_column_kind_at(*coordinates, ColumnKind::Wall);
-        }
-        possible_window_coordinates.iter()
-            .filter(|block_coordinates| { block_coordinates.1 == y + 2 })
-            .for_each(|block_coordinates| {
-                room_shape.set_column_kind_at(
-                    (block_coordinates.0 as usize, block_coordinates.2 as usize),
-                    ColumnKind::Window,
-                ); });
-        for door_placement in &door_positions {
-            if door_placement.height as i64 == y + 1 {
-                room_shape.set_column_kind_at(door_placement.coordinates, ColumnKind::Door);
+            for y in *y as usize..*y as usize + ceiling_height as usize + 1 {
+                let coordinates = BlockCoord(*x as i64, y as i64, *z as i64);
+                output.set_block_at(coordinates, palette.wall.clone());
             }
         }
 
-        // Furnish as "cottage" (for now, later there may be multiple functions depending on plot
-        // size and other factors.)
-        if let Some(interior) = furnish_cottage(&room_shape) {
-            output.paste(BlockCoord(0, *y + 1, 0), &interior);
+        // Place interior doors
+        for door_position in &interior_doors {
+            let (x, y, z) = (door_position.coordinates.0, door_position.height, door_position.coordinates.1);
+            let lower_coordinates = BlockCoord(x as i64, y as i64, z as i64);
+            let upper_coordinates = BlockCoord(x as i64, y as i64 + 1, z as i64);
+            output.set_block_at(lower_coordinates, Block::Door(mcprogedit::block::Door {
+                material: mcprogedit::material::DoorMaterial::Oak,
+                facing: door_position.facing,
+                half: mcprogedit::block::DoorHalf::Lower,
+                hinged_at: mcprogedit::block::Hinge::Right,
+                open: false,
+            }));
+            output.set_block_at(upper_coordinates, Block::Door(mcprogedit::block::Door {
+                material: mcprogedit::material::DoorMaterial::Oak,
+                facing: door_position.facing,
+                half: mcprogedit::block::DoorHalf::Upper,
+                hinged_at: mcprogedit::block::Hinge::Right,
+                open: false,
+            }));
+        }
+
+        // Place interior openings
+        for (x, z) in &interior_wall_openings {
+            let bottom = BlockCoord(*x as i64, *y + 1, *z as i64);
+            let top = bottom + BlockCoord(0, 1, 0);
+            output.set_block_at(bottom, Block::Air);
+            output.set_block_at(top, Block::Air);
+        }
+
+        // Furnish the rooms according to their type.
+        for (room_kind, interior_area) in rooms {
+            // Prepare room shape structure
+            let mut room_shape = RoomShape::new((x_len, z_len));
+            for coordinates in &interior_area {
+                let ceiling_height = if index < floor_levels.len() - 1 {
+                    floor_levels[index + 1] as i64 - *y - 1
+                } else {
+                    *roof_height_lookup.get(coordinates)
+                        .expect("If it's in buildable interior it should have a roof above.")
+                        as i64
+                        - *y
+                        - 1
+                };
+                room_shape.set_column_kind_at(*coordinates, ColumnKind::Floor(ceiling_height as usize));
+            }
+            // Outer walls.
+            for coordinates in &interior_neighbours {
+                room_shape.set_column_kind_at(*coordinates, ColumnKind::Wall);
+            }
+            // Interior walls.
+            for coordinates in &interior_walls {
+                room_shape.set_column_kind_at(*coordinates, ColumnKind::Wall);
+            }
+            // Windows.
+            possible_window_coordinates.iter()
+                .filter(|block_coordinates| { block_coordinates.1 == y + 2 })
+                .for_each(|block_coordinates| {
+                    room_shape.set_column_kind_at(
+                        (block_coordinates.0 as usize, block_coordinates.2 as usize),
+                        ColumnKind::Window,
+                    ); });
+            // Exterior doors.
+            for door_placement in &door_positions {
+                if door_placement.height as i64 == y + 1 {
+                    room_shape.set_column_kind_at(door_placement.coordinates, ColumnKind::Door);
+                }
+            }
+            // Interior doors.
+            for interior_door in &interior_doors {
+                room_shape.set_column_kind_at(interior_door.coordinates, ColumnKind::Door);
+            }
+            for interior_opening in &interior_wall_openings {
+                room_shape.set_column_kind_at(*interior_opening, ColumnKind::Door);
+            }
+
+            // Furnish the room according to its function.
+            match room_kind {
+                RoomKind::Cooking => if let Some(interior) = room_interior::furnish_cooking_area(&room_shape) {
+                    output.paste(BlockCoord(0, *y + 1, 0), &interior);
+                },
+                RoomKind::Cottage => if let Some(interior) = room_interior::furnish_cottage(&room_shape) {
+                    output.paste(BlockCoord(0, *y + 1, 0), &interior);
+                },
+                RoomKind::Living => if let Some(interior) = room_interior::furnish_living_area(&room_shape) {
+                    output.paste(BlockCoord(0, *y + 1, 0), &interior);
+                },
+                RoomKind::Sleeping => if let Some(interior) = room_interior::furnish_sleeping_area(&room_shape) {
+                    output.paste(BlockCoord(0, *y + 1, 0), &interior);
+                },
+                RoomKind::Working => if let Some(interior) = room_interior::furnish_working_area(&room_shape) {
+                    output.paste(BlockCoord(0, *y + 1, 0), &interior);
+                },
+            }
         }
     }
 
@@ -585,7 +1087,7 @@ fn compute_split_lines(points: &HashSet<(usize, usize)>) -> (RawEdge2d, RawEdge2
     }
 }
 
-pub fn build_legacy_house(
+pub fn _build_legacy_house(
     excerpt: &WorldExcerpt,
     build_area: &BuildArea,
     palette: &BlockPalette,
@@ -891,7 +1393,7 @@ pub fn build_legacy_house(
     }
     if !door_placed {
         // TODO Consider trying a different strategy before giving up.
-        println!("Unable to find a suitable location for the door!");
+        warn!("Unable to find a suitable location for the door!");
         return None;
     }
 
