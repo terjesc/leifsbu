@@ -1,6 +1,6 @@
 [package]
 name = "leifsbu"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Terje Schjelderup <terjesc@pvv.org>"]
 edition = "2018"
 description = "Minecraft settlement generator."
