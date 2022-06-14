@@ -24,6 +24,7 @@ use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use log::{error, info, LevelFilter};
 use simple_logger::SimpleLogger;
 
 use imageproc::stats::histogram;
@@ -43,7 +44,7 @@ use crate::walled_town::*;
 
 fn main() {
     // Initialize logging
-    SimpleLogger::new().init().unwrap();
+    SimpleLogger::new().with_level(LevelFilter::Warn).init().unwrap();
 
     // Read arguments
     // **************
@@ -63,13 +64,13 @@ fn main() {
 
     // World import
     // ************
-    println!("Importing from {:?}", input_directory);
+    info!("Importing from {:?}", input_directory);
     let mut excerpt = WorldExcerpt::from_save(
         (x, y, z).into(),
         (x + x_len - 1, y + y_len - 1, z + z_len - 1).into(),
         Path::new(input_directory),
     );
-    println!("Imported world excerpt of dimensions {:?}", excerpt.dim());
+    info!("Imported world excerpt of dimensions {:?}", excerpt.dim());
 
 
     // Initial information extraction
@@ -106,7 +107,7 @@ fn main() {
 
     // Get town size
     let town_area = geometry::area(&wall_circle);
-    println!("The found city has a total area of {} m².", town_area);
+    info!("The found city has a total area of {} m².", town_area);
 
     // TODO FUTURE WORK
     // - Find primary sector areas (agriculture, fishing, forestry, mining)
@@ -216,12 +217,12 @@ fn main() {
         #[cfg(feature = "debug_images")]
         district_image.save(format!("D-01 district {:0>2}.png", colour)).unwrap();
 
-        println!("District {} has area {}.", colour, geometry::area(district));
+        info!("District {} has area {}.", colour, geometry::area(district));
     
         let stats = histogram(&district_image);
         let surface_area = stats.channels[0][63];
         let border_area = stats.channels[0][255];
-        println!(
+        info!(
             "District {} image areas: {} + ({} / 2) = {}",
             colour, surface_area, border_area, surface_area + (border_area / 2)
         );
@@ -235,7 +236,7 @@ fn main() {
     for district in districts {
         let mut district_plots = divide_city_block(&district, &land_usage_graph);
         // TODO draw the plots or something...
-        println!("Found {} plots for a district.", district_plots.len());
+        info!("Found {} plots for a district.", district_plots.len());
         plots.append(&mut district_plots);
     }
 
@@ -323,7 +324,7 @@ fn main() {
         _ => 6,
     });
 
-    println!("Decided that {:?} are the common wood materials.", wood_available);
+    info!("Decided that {:?} are the common wood materials.", wood_available);
 
     // Use found materials for a default block palette
     let mut block_palette = BlockPalette {
@@ -342,7 +343,7 @@ fn main() {
         block_palette.wall = Block::Sandstone;
     }
 
-    println!(
+    info!(
         "Found {} different flowers.",
         available_flowers.len(),
     );
@@ -558,14 +559,14 @@ fn main() {
 
     // World export
     // ************
-    println!("Exporting to {:?}", output_directory);
+    info!("Exporting to {:?}", output_directory);
     excerpt.to_save((x, y, z).into(), Path::new(output_directory));
-    println!("Exported world excerpt of dimensions {:?}", excerpt.dim());
+    info!("Exported world excerpt of dimensions {:?}", excerpt.dim());
 }
 
 fn parse_i64_or_exit(string: &str) -> i64 {
     string.parse::<i64>().unwrap_or_else(|_| {
-        eprintln!("Not an integer: {}", string);
+        error!("Not an integer: {}", string);
         std::process::exit(1);
     })
 }

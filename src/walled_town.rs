@@ -8,6 +8,7 @@ use imageproc::distance_transform::*;
 use imageproc::map::map_colors;
 use imageproc::morphology::*;
 use imageproc::suppress::suppress_non_maximum;
+use log::info;
 use mcprogedit::coordinates::BlockColumnCoord;
 
 use crate::types::*;
@@ -229,7 +230,7 @@ fn walled_town_contour_internal(
         } else if iteration % 10 == 0 {
             let file_name = format!("acm_{:0>3}.png", iteration.to_string());
             save_snake_image(&snake, &map_img, &file_name);
-            println!("Saved {}", file_name);
+            info!("Saved {}", file_name);
         }
 
         snake = s;

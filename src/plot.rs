@@ -39,7 +39,7 @@ impl Plot {
 
         for edge in &self.edges {
             if polygon.last() != Some(&BlockColumnCoord::from(edge.points.0)) {
-                warn!("Missing edge along plot circumference, from {:?} to {:?}.", polygon.last(), edge.points.0);
+                trace!("Missing edge along plot circumference, from {:?} to {:?}.", polygon.last(), edge.points.0);
                 polygon.push(BlockColumnCoord::from(edge.points.0));
             }
             polygon.push(BlockColumnCoord::from(edge.points.1));
@@ -47,7 +47,7 @@ impl Plot {
 
         // Ensure that the polygon is a full circle
         if polygon.first() != polygon.last() {
-            warn!("Missing edge at end of plot circumference, from {:?} to {:?}.", polygon.last(), polygon.first());
+            trace!("Missing edge at end of plot circumference, from {:?} to {:?}.", polygon.last(), polygon.first());
             polygon.push(*polygon.first().unwrap());
         }
 

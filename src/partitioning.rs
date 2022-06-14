@@ -10,7 +10,7 @@ use imageproc::morphology::*;
 use imageproc::region_labelling::{connected_components, Connectivity};
 use imageproc::stats::histogram;
 use imageproc::template_matching::{find_extremes, Extremes};
-use log::warn;
+use log::{info, warn};
 use mcprogedit::coordinates::{BlockColumnCoord, BlockCoord};
 use num_integer::Roots;
 use std::cmp::{max, min};
@@ -125,7 +125,7 @@ pub fn divide_town_into_blocks(
 
     // Limit the area of operation to what is strictly necessary
     let (offset, dimensions) = snake_bounding_box(circumference);
-    println!(
+    info!(
         "Town circumference bounding box has offset {:?} and size {:?}",
         offset, dimensions
     );
@@ -191,7 +191,7 @@ pub fn divide_town_into_blocks(
         max_value: full_area_count,
         ..
     } = find_extremes(&initial_areas);
-    println!("Found {} distinct existing areas.", full_area_count);
+    info!("Found {} distinct existing areas.", full_area_count);
 
     #[cfg(feature = "debug_images")]
     if full_area_count > 0 {
@@ -221,7 +221,7 @@ pub fn divide_town_into_blocks(
         max_value: area_count,
         ..
     } = find_extremes(&uncovered_areas);
-    println!(
+    info!(
         "Found {} distinct areas that may need coverage.",
         area_count
     );
@@ -236,12 +236,12 @@ pub fn divide_town_into_blocks(
     let stats = histogram(&uncovered_areas);
 
     // NB Only for debug prints...
-    println!("Area statistics:");
-    println!("Background size:\t{}", stats.channels[0][0]);
+    info!("Area statistics:");
+    info!("Background size:\t{}", stats.channels[0][0]);
     for area_index in 1..stats.channels[0].len() {
         let size = stats.channels[0][area_index];
         if size > 0 {
-            println!("Area {} size:\t{}", area_index, size);
+            info!("Area {} size:\t{}", area_index, size);
         }
     }
 
@@ -444,7 +444,7 @@ pub fn divide_town_into_blocks(
             let interval_length = full_distance / interval_count;
             let edge_offset = (full_distance - (interval_count * interval_length)) / 2;
 
-            println!(
+            info!(
                 "Found {} intervals of size {}, edges offset by {}, to cover the {} long gap.",
                 interval_count, interval_length, edge_offset, uncovered_length,
             );
@@ -459,9 +459,9 @@ pub fn divide_town_into_blocks(
 
         if uncovered_size.0 < uncovered_size.1 {
             // shortest along x axis
-            println!("Decided to spread along Z axis.");
+            info!("Decided to spread along Z axis.");
             let z_offsets = calculate_offsets(uncovered_size.1);
-            println!("Z offsets: {:?}", z_offsets);
+            info!("Z offsets: {:?}", z_offsets);
 
             // Fill with horizontal paths
             for z in z_offsets {
@@ -508,9 +508,9 @@ pub fn divide_town_into_blocks(
             }
         } else {
             // shortest along z axis
-            println!("Decided to spread along X axis.");
+            info!("Decided to spread along X axis.");
             let x_offsets = calculate_offsets(uncovered_size.0);
-            println!("X offsets: {:?}", x_offsets);
+            info!("X offsets: {:?}", x_offsets);
 
             // Fill with vertical paths
             for x in x_offsets {
@@ -956,7 +956,7 @@ fn resnake(snake: &Snake, min_length: f32, max_length: f32) -> Snake {
         }
     }
 
-    println!(
+    info!(
         "Generated new snake of length {}, from old snake of length {}.",
         output.len(),
         snake.len(),
